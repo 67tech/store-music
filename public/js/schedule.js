@@ -1,11 +1,79 @@
 const DAY_NAMES = ['Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota'];
 
 async function initSchedule() {
+  // Timeline date picker
+  const dateInput = document.getElementById('timeline-date');
+  dateInput.value = new Date().toISOString().slice(0, 10);
+  dateInput.onchange = () => loadTimeline(dateInput.value);
+
+  await loadTimeline();
   await loadStoreHours();
   await loadExceptions();
   await loadSettings();
 
   document.getElementById('btn-add-exception').onclick = addException;
+}
+
+async function loadTimeline(dateStr) {
+  const container = document.getElementById('timeline-container');
+  const date = dateStr || new Date().toISOString().slice(0, 10);
+
+  try {
+    const timeline = await API.get(`/schedule/timeline?date=${date}`);
+
+    if (timeline.closed) {
+      container.innerHTML = '<div class="sm-timeline-closed">Sklep zamknięty w tym dniu</div>';
+      return;
+    }
+
+    const now = new Date();
+    const isToday = date === now.toISOString().slice(0, 10);
+    const currentTime = isToday
+      ? `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+      : null;
+
+    let html = '<div class="sm-timeline">';
+    let nowInserted = false;
+
+    for (const event of timeline.events) {
+      // Insert "now" marker
+      if (isToday && currentTime && !nowInserted && event.time > currentTime) {
+        html += `<div class="sm-timeline-now-line">Teraz ${currentTime}</div>`;
+        nowInserted = true;
+      }
+
+      const isPast = isToday && currentTime && event.time < currentTime;
+      const isNow = isToday && currentTime && event.time === currentTime;
+
+      const typeClass = `sm-timeline-event--${event.type}`;
+      const pastClass = isPast ? 'sm-timeline-event--past' : '';
+      const nowClass = isNow ? 'sm-timeline-event--now' : '';
+
+      html += `
+        <div class="sm-timeline-event ${typeClass} ${pastClass} ${nowClass}">
+          <span class="sm-timeline-time">${event.time}</span>
+          <span class="sm-timeline-label">${esc(event.label)}</span>
+          ${event.detail ? `<span class="sm-timeline-detail">${esc(event.detail)}</span>` : ''}
+          ${event.duration ? `<span class="sm-timeline-detail">${formatTime(event.duration)}</span>` : ''}
+        </div>
+      `;
+    }
+
+    // Insert "now" at the end if not yet inserted
+    if (isToday && currentTime && !nowInserted) {
+      html += `<div class="sm-timeline-now-line">Teraz ${currentTime}</div>`;
+    }
+
+    html += '</div>';
+
+    if (timeline.events.length === 0) {
+      html = '<div class="sm-timeline-closed">Brak zaplanowanych wydarzeń</div>';
+    }
+
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<p class="sm-empty">Błąd ładowania timeline: ${err.message}</p>`;
+  }
 }
 
 async function loadStoreHours() {
@@ -37,7 +105,6 @@ async function loadStoreHours() {
   saveBtn.onclick = saveStoreHours;
   container.appendChild(saveBtn);
 
-  // Toggle disabled on closed checkbox
   container.querySelectorAll('input[data-field="is_closed"]').forEach(cb => {
     cb.onchange = () => {
       const day = cb.dataset.day;
@@ -63,6 +130,7 @@ async function saveStoreHours() {
   }
   await API.put('/schedule/hours', { hours });
   await smAlert('Zapisano!');
+  await loadTimeline();
 }
 
 async function loadExceptions() {
@@ -118,6 +186,7 @@ async function addException() {
     await API.post('/schedule/exceptions', data);
     modal.classList.remove('sm-modal--open');
     await loadExceptions();
+    await loadTimeline();
   };
 
   modal.classList.add('sm-modal--open');
@@ -127,6 +196,7 @@ async function deleteException(id) {
   if (!await smConfirm('Usunąć wyjątek?')) return;
   await API.del(`/schedule/exceptions/${id}`);
   await loadExceptions();
+  await loadTimeline();
 }
 
 async function loadSettings() {

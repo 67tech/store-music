@@ -68,6 +68,11 @@ router.get('/today', (req, res) => {
   res.json(schedulerService.getTodayHours());
 });
 
+// Timeline for a given date (or today)
+router.get('/timeline', (req, res) => {
+  res.json(schedulerService.getTimeline(req.query.date || null));
+});
+
 // Settings
 router.get('/settings', (req, res) => {
   res.json(playlistService.getSettings());

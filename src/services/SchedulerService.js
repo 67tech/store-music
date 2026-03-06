@@ -131,6 +131,85 @@ class SchedulerService {
     }
   }
 
+  // Build timeline for a given date
+  getTimeline(dateStr) {
+    const date = dateStr ? new Date(dateStr + 'T12:00:00') : new Date();
+    const dayOfWeek = date.getDay();
+    const todayStr = dateStr || date.toISOString().slice(0, 10);
+
+    const hours = this._getTodayHours(todayStr, dayOfWeek);
+    const settings = playlistService.getSettings();
+    const events = [];
+
+    if (!hours || hours.is_closed) {
+      return { date: todayStr, closed: true, hours: null, events: [] };
+    }
+
+    events.push({
+      time: hours.open_time,
+      type: 'open',
+      label: 'Otwarcie sklepu',
+      detail: settings.autoPlayOnOpen ? 'Auto-start playlisty' : null,
+    });
+
+    const scheduled = getDb().prepare(`
+      SELECT sa.*, a.name as announcement_name, a.duration
+      FROM scheduled_announcements sa
+      JOIN announcements a ON a.id = sa.announcement_id
+      WHERE sa.is_active = 1
+    `).all();
+
+    for (const sa of scheduled) {
+      let triggerTime = null;
+
+      if (sa.trigger_type === 'specific_date') {
+        const [saDate, saTime] = sa.trigger_value.split(' ');
+        if (saDate === todayStr) triggerTime = saTime;
+      } else {
+        let days;
+        try { days = JSON.parse(sa.days_of_week); } catch { continue; }
+        if (!days.includes(dayOfWeek)) continue;
+
+        if (sa.trigger_type === 'fixed_time') {
+          triggerTime = sa.trigger_value;
+        } else if (sa.trigger_type === 'before_close') {
+          triggerTime = this._subtractMinutes(hours.close_time, parseInt(sa.trigger_value));
+        } else if (sa.trigger_type === 'after_open') {
+          triggerTime = this._addMinutes(hours.open_time, parseInt(sa.trigger_value));
+        }
+      }
+
+      if (triggerTime) {
+        events.push({
+          time: triggerTime,
+          type: 'announcement',
+          label: sa.announcement_name,
+          detail: sa.trigger_type === 'before_close' ? `${sa.trigger_value} min przed zamknięciem` :
+                  sa.trigger_type === 'after_open' ? `${sa.trigger_value} min po otwarciu` :
+                  sa.trigger_type === 'specific_date' ? 'Jednorazowy' : 'Cykliczny',
+          duration: sa.duration || 0,
+          volume: sa.volume_override,
+        });
+      }
+    }
+
+    events.push({
+      time: hours.close_time,
+      type: 'close',
+      label: 'Zamknięcie sklepu',
+      detail: settings.autoStopOnClose ? 'Auto-stop playlisty' : null,
+    });
+
+    events.sort((a, b) => a.time.localeCompare(b.time));
+
+    return {
+      date: todayStr,
+      closed: false,
+      hours: { open: hours.open_time, close: hours.close_time },
+      events,
+    };
+  }
+
   async _autoPlay() {
     const defaultPlaylist = playlistService.getDefaultPlaylist();
     if (defaultPlaylist && defaultPlaylist.tracks.length > 0) {

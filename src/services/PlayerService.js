@@ -364,37 +364,58 @@ class PlayerService extends EventEmitter {
     this.state.currentIndex = saved.currentIndex;
 
     if (saved.status === 'playing' || saved.status === 'paused') {
-      // Mute before loading so user doesn't hear the beginning
-      try { await this.mpv.volume(0); } catch {}
+      const idx = this.state.shuffle
+        ? this.state.shuffledIndices[this.state.currentIndex]
+        : this.state.currentIndex;
+      const track = this.state.playlistTracks[idx];
 
-      await this._playCurrentTrack();
+      if (track) {
+        // Mute and pause before loading
+        try { await this.mpv.volume(0); } catch {}
 
-      // Wait for mpv to fully load the file before seeking
-      await new Promise(r => setTimeout(r, 500));
-
-      // Seek to saved position
-      if (saved.elapsed > 0) {
+        // Load file in paused state using mpv's pause property
         try {
-          await this.mpv.seek(saved.elapsed, 'absolute');
-          this.state.elapsed = saved.elapsed;
+          await this.mpv.setProperty('pause', true);
+          await this.mpv.load(track.filepath);
         } catch (err) {
-          console.error('Seek after announcement failed:', err.message);
+          console.error('Failed to load track for restore:', err.message);
         }
-        // Wait for seek to complete
-        await new Promise(r => setTimeout(r, 300));
-      }
 
-      // Fade in from 0 to saved volume
-      const steps = 20;
-      const stepMs = fadeDurationMs / steps;
-      for (let i = 1; i <= steps; i++) {
-        const vol = Math.round(saved.volume * (i / steps));
-        try { await this.mpv.volume(vol); } catch {}
-        await new Promise(r => setTimeout(r, stepMs));
-      }
+        // Wait for file to be loaded
+        await new Promise(r => setTimeout(r, 500));
 
-      if (saved.status === 'paused') {
-        await this.mpv.pause();
+        // Seek to saved position while still paused
+        if (saved.elapsed > 0) {
+          try {
+            await this.mpv.seek(saved.elapsed, 'absolute');
+          } catch (err) {
+            console.error('Seek after announcement failed:', err.message);
+          }
+          await new Promise(r => setTimeout(r, 300));
+        }
+
+        // Now unpause and start fade in
+        try { await this.mpv.resume(); } catch {}
+
+        this.state.currentTrack = track;
+        this.state.status = 'playing';
+        this.state.elapsed = saved.elapsed || 0;
+        this._startPositionTracking();
+
+        // Fade in from 0 to saved volume
+        const steps = 20;
+        const stepMs = fadeDurationMs / steps;
+        for (let i = 1; i <= steps; i++) {
+          const vol = Math.round(saved.volume * (i / steps));
+          try { await this.mpv.volume(vol); } catch {}
+          await new Promise(r => setTimeout(r, stepMs));
+        }
+
+        if (saved.status === 'paused') {
+          try { await this.mpv.pause(); } catch {}
+          this.state.status = 'paused';
+          this._stopPositionTracking();
+        }
       }
     }
 
