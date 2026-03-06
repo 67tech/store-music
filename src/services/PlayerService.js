@@ -160,6 +160,17 @@ class PlayerService extends EventEmitter {
     this._emitState();
   }
 
+  async seek(position) {
+    if (!this.mpv) return;
+    try {
+      await this.mpv.seek(position, 'absolute');
+      this.state.elapsed = position;
+      this._emitState();
+    } catch (err) {
+      console.error('Seek failed:', err.message);
+    }
+  }
+
   async next() {
     if (this.state.playlistTracks.length === 0) return;
     this.state.currentIndex++;

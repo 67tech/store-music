@@ -39,12 +39,20 @@ class TtsService {
 
   _generatePiper(text, outputPath, language) {
     return new Promise((resolve, reject) => {
+      // Map language code to Piper model name
+      const modelMap = {
+        pl: 'pl_PL-darkman-medium',
+        en: 'en_US-lessac-medium',
+        de: 'de_DE-thorsten-medium',
+      };
+      const model = modelMap[language] || modelMap.pl;
+
       // Convert to WAV first, then to MP3
       const wavPath = outputPath.replace('.mp3', '.wav');
-      const escapedText = text.replace(/'/g, "'\\''");
-      const cmd = `echo '${escapedText}' | piper --model ${language} --output_file ${wavPath} && ffmpeg -y -i ${wavPath} ${outputPath} && rm -f ${wavPath}`;
+      const escapedText = text.replace(/"/g, '\\"');
+      const cmd = `echo "${escapedText}" | piper --model ${model} --output_file ${wavPath} && ffmpeg -y -i ${wavPath} ${outputPath} && rm -f ${wavPath}`;
 
-      exec(cmd, (err, stdout, stderr) => {
+      exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
         if (err) reject(new Error(`Piper TTS failed: ${stderr || err.message}`));
         else resolve();
       });

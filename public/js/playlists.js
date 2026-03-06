@@ -69,14 +69,14 @@ async function loadTracks() {
 }
 
 async function createPlaylist() {
-  const name = prompt('Nazwa playlisty:');
+  const name = await smPrompt('Nazwa playlisty:');
   if (!name) return;
   await API.post('/playlists', { name });
   await loadPlaylists();
 }
 
 async function deletePlaylist(id) {
-  if (!confirm('Usunąć playlistę?')) return;
+  if (!await smConfirm('Usunąć playlistę?')) return;
   await API.del(`/playlists/${id}`);
   await loadPlaylists();
 }
@@ -153,16 +153,36 @@ async function removeFromPlaylist(playlistId, trackId) {
 
 async function addToPlaylistPrompt(trackId) {
   const playlists = await API.get('/playlists');
-  if (playlists.length === 0) { alert('Najpierw utwórz playlistę!'); return; }
+  if (playlists.length === 0) { await smAlert('Najpierw utwórz playlistę!'); return; }
 
-  const name = playlists.length === 1
-    ? playlists[0].name
-    : prompt('Nazwa playlisty:\n' + playlists.map(p => p.name).join('\n'));
+  if (playlists.length === 1) {
+    await API.post(`/playlists/${playlists[0].id}/tracks`, { trackId });
+    await smAlert('Dodano!');
+    return;
+  }
 
-  const pl = playlists.find(p => p.name === name);
-  if (!pl) return;
-  await API.post(`/playlists/${pl.id}/tracks`, { trackId });
-  alert('Dodano!');
+  // Show playlist picker in modal
+  const modal = document.getElementById('modal');
+  const modalBody = document.getElementById('modal-body');
+  modalBody.innerHTML = `
+    <h2>Dodaj do playlisty</h2>
+    <div class="sm-form-row">
+      <select id="pick-playlist">
+        ${playlists.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+      <button class="sm-btn" style="background: var(--sm-border); color: var(--sm-text);" onclick="document.getElementById('modal').classList.remove('sm-modal--open')">Anuluj</button>
+      <button class="sm-btn sm-btn--primary" id="pick-playlist-ok">Dodaj</button>
+    </div>
+  `;
+  document.getElementById('pick-playlist-ok').onclick = async () => {
+    const plId = parseInt(document.getElementById('pick-playlist').value);
+    await API.post(`/playlists/${plId}/tracks`, { trackId });
+    modal.classList.remove('sm-modal--open');
+    await smAlert('Dodano!');
+  };
+  modal.classList.add('sm-modal--open');
 }
 
 async function uploadTrack() {
@@ -179,7 +199,7 @@ async function uploadTrack() {
 }
 
 async function deleteTrack(id) {
-  if (!confirm('Usunąć utwór?')) return;
+  if (!await smConfirm('Usunąć utwór?')) return;
   await API.del(`/tracks/${id}`);
   await loadTracks();
 }

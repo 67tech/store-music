@@ -62,7 +62,7 @@ async function saveStoreHours() {
     });
   }
   await API.put('/schedule/hours', { hours });
-  alert('Zapisano!');
+  await smAlert('Zapisano!');
 }
 
 async function loadExceptions() {
@@ -114,7 +114,7 @@ async function addException() {
       open_time: document.getElementById('exc-open').value,
       close_time: document.getElementById('exc-close').value,
     };
-    if (!data.date) { alert('Wybierz datę!'); return; }
+    if (!data.date) { await smAlert('Wybierz datę!'); return; }
     await API.post('/schedule/exceptions', data);
     modal.classList.remove('sm-modal--open');
     await loadExceptions();
@@ -124,7 +124,7 @@ async function addException() {
 }
 
 async function deleteException(id) {
-  if (!confirm('Usunąć wyjątek?')) return;
+  if (!await smConfirm('Usunąć wyjątek?')) return;
   await API.del(`/schedule/exceptions/${id}`);
   await loadExceptions();
 }
@@ -160,5 +160,5 @@ async function saveSettings() {
     ttsEngine: document.getElementById('set-tts-engine').value,
   };
   await API.put('/schedule/settings', data);
-  alert('Zapisano!');
+  await smAlert('Zapisano!');
 }

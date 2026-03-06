@@ -135,11 +135,15 @@ body {
 
 .sm-progress-bar {
   flex: 1;
-  height: 6px;
+  height: 12px;
   background: var(--sm-border);
-  border-radius: 3px;
+  border-radius: 6px;
   overflow: hidden;
+  cursor: pointer;
+  position: relative;
 }
+
+.sm-progress-bar:hover { height: 16px; }
 
 .sm-progress-fill {
   height: 100%;

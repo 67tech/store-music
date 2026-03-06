@@ -39,6 +39,12 @@ router.post('/previous', async (req, res) => {
   res.json(playerService.getState());
 });
 
+router.post('/seek', async (req, res) => {
+  if (req.body.position === undefined) return res.status(400).json({ error: 'position required' });
+  await playerService.seek(parseFloat(req.body.position));
+  res.json(playerService.getState());
+});
+
 router.post('/volume', async (req, res) => {
   if (req.body.volume === undefined) return res.status(400).json({ error: 'volume required' });
   await playerService.setVolume(parseInt(req.body.volume));

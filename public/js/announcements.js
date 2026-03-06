@@ -95,7 +95,7 @@ async function uploadAnnouncement() {
   const input = document.getElementById('announcement-file-input');
   if (!input.files.length) return;
 
-  const name = prompt('Nazwa komunikatu:', input.files[0].name.replace(/\.[^.]+$/, ''));
+  const name = await smPrompt('Nazwa komunikatu:', input.files[0].name.replace(/\.[^.]+$/, ''));
   if (!name) { input.value = ''; return; }
 
   const formData = new FormData();
@@ -134,7 +134,7 @@ async function createTts() {
 
   document.getElementById('tts-generate').onclick = async () => {
     const text = document.getElementById('tts-text').value.trim();
-    if (!text) { alert('Wpisz tekst!'); return; }
+    if (!text) { await smAlert('Wpisz tekst!'); return; }
 
     document.getElementById('tts-status').textContent = 'Generowanie...';
     try {
@@ -155,12 +155,12 @@ async function createTts() {
 }
 
 async function previewAnnouncement(id) {
-  if (!confirm('Odtworzyć komunikat teraz? (Muzyka zostanie wstrzymana)')) return;
+  if (!await smConfirm('Odtworzyć komunikat teraz? (Muzyka zostanie wstrzymana)')) return;
   await API.post(`/announcements/${id}/preview`);
 }
 
 async function deleteAnnouncement(id) {
-  if (!confirm('Usunąć komunikat?')) return;
+  if (!await smConfirm('Usunąć komunikat?')) return;
   await API.del(`/announcements/${id}`);
   await loadAnnouncements();
   await loadScheduledAnnouncements();
@@ -218,7 +218,7 @@ async function scheduleAnnouncementPrompt(announcementId) {
     if (type === 'specific_date') {
       const date = document.getElementById('sched-date').value;
       const time = document.getElementById('sched-date-time').value;
-      if (!date || !time) { alert('Wybierz datę i godzinę!'); return; }
+      if (!date || !time) { await smAlert('Wybierz datę i godzinę!'); return; }
       triggerValue = `${date} ${time}`;
       days = [0, 1, 2, 3, 4, 5, 6]; // ignored for specific_date but required by schema
     } else if (type === 'fixed_time') {
@@ -253,7 +253,7 @@ async function toggleScheduledActive(id, active) {
 }
 
 async function deleteScheduled(id) {
-  if (!confirm('Usunąć zaplanowany komunikat?')) return;
+  if (!await smConfirm('Usunąć zaplanowany komunikat?')) return;
   await API.del(`/announcements/scheduled/${id}`);
   await loadScheduledAnnouncements();
 }

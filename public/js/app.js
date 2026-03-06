@@ -1,10 +1,81 @@
+// --- Modal-based alert/confirm/prompt ---
+function smAlert(message) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('modal');
+    const modalBody = document.getElementById('modal-body');
+    modalBody.innerHTML = `
+      <p style="margin-bottom: 16px; font-size: 0.95rem;">${esc(message)}</p>
+      <div style="text-align: right;">
+        <button class="sm-btn sm-btn--primary" id="sm-alert-ok">OK</button>
+      </div>
+    `;
+    document.getElementById('sm-alert-ok').onclick = () => {
+      modal.classList.remove('sm-modal--open');
+      resolve();
+    };
+    modal.classList.add('sm-modal--open');
+  });
+}
+
+function smConfirm(message) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('modal');
+    const modalBody = document.getElementById('modal-body');
+    modalBody.innerHTML = `
+      <p style="margin-bottom: 16px; font-size: 0.95rem;">${esc(message)}</p>
+      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+        <button class="sm-btn" style="background: var(--sm-border); color: var(--sm-text);" id="sm-confirm-no">Anuluj</button>
+        <button class="sm-btn sm-btn--primary" id="sm-confirm-yes">Tak</button>
+      </div>
+    `;
+    document.getElementById('sm-confirm-yes').onclick = () => {
+      modal.classList.remove('sm-modal--open');
+      resolve(true);
+    };
+    document.getElementById('sm-confirm-no').onclick = () => {
+      modal.classList.remove('sm-modal--open');
+      resolve(false);
+    };
+    modal.classList.add('sm-modal--open');
+  });
+}
+
+function smPrompt(message, defaultValue = '') {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('modal');
+    const modalBody = document.getElementById('modal-body');
+    modalBody.innerHTML = `
+      <p style="margin-bottom: 12px; font-size: 0.95rem;">${esc(message)}</p>
+      <div class="sm-form-row"><input type="text" id="sm-prompt-input" value="${esc(defaultValue)}"></div>
+      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+        <button class="sm-btn" style="background: var(--sm-border); color: var(--sm-text);" id="sm-prompt-cancel">Anuluj</button>
+        <button class="sm-btn sm-btn--primary" id="sm-prompt-ok">OK</button>
+      </div>
+    `;
+    const input = document.getElementById('sm-prompt-input');
+    input.focus();
+    input.select();
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { modal.classList.remove('sm-modal--open'); resolve(input.value); }
+    });
+    document.getElementById('sm-prompt-ok').onclick = () => {
+      modal.classList.remove('sm-modal--open');
+      resolve(input.value);
+    };
+    document.getElementById('sm-prompt-cancel').onclick = () => {
+      modal.classList.remove('sm-modal--open');
+      resolve(null);
+    };
+    modal.classList.add('sm-modal--open');
+  });
+}
+
+// --- App init ---
 document.addEventListener('DOMContentLoaded', () => {
   const socket = io();
 
-  // Load user info
   loadUserInfo();
 
-  // Navigation
   const tabs = document.querySelectorAll('.sm-nav-tab');
   const sections = document.querySelectorAll('.sm-section');
 
@@ -18,7 +89,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Close modal
   document.getElementById('modal-close').addEventListener('click', () => {
     document.getElementById('modal').classList.remove('sm-modal--open');
   });
@@ -28,7 +98,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Init modules
   initPlayer(socket);
   initPlaylists();
   initSchedule();
@@ -46,7 +115,7 @@ async function loadUserInfo() {
 }
 
 async function logout() {
-  if (!confirm('Wylogować?')) return;
+  if (!await smConfirm('Wylogować?')) return;
   await fetch('/api/auth/logout', { method: 'POST' });
   window.location.href = '/login';
 }
@@ -66,11 +135,11 @@ function changePassword() {
   document.getElementById('cp-save').onclick = async () => {
     const current = document.getElementById('cp-current').value;
     const newPw = document.getElementById('cp-new').value;
-    const confirm = document.getElementById('cp-confirm').value;
+    const confirmPw = document.getElementById('cp-confirm').value;
     const errEl = document.getElementById('cp-error');
 
     if (!current || !newPw) { errEl.textContent = 'Wypełnij wszystkie pola'; return; }
-    if (newPw !== confirm) { errEl.textContent = 'Hasła nie są takie same'; return; }
+    if (newPw !== confirmPw) { errEl.textContent = 'Hasła nie są takie same'; return; }
     if (newPw.length < 4) { errEl.textContent = 'Hasło musi mieć min. 4 znaki'; return; }
 
     const res = await fetch('/api/auth/change-password', {
@@ -81,8 +150,8 @@ function changePassword() {
     const data = await res.json();
 
     if (res.ok) {
-      alert('Hasło zmienione!');
       modal.classList.remove('sm-modal--open');
+      await smAlert('Hasło zmienione!');
     } else {
       errEl.textContent = data.error || 'Błąd zmiany hasła';
     }
