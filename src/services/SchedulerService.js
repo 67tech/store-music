@@ -83,23 +83,37 @@ class SchedulerService {
       WHERE sa.is_active = 1
     `).all();
 
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+
     for (const sa of scheduled) {
-      // Check day of week
-      let days;
-      try { days = JSON.parse(sa.days_of_week); } catch { continue; }
-      if (!days.includes(dayOfWeek)) continue;
-
       let triggerTime = null;
+      let shouldCheck = false;
 
-      if (sa.trigger_type === 'fixed_time') {
-        triggerTime = sa.trigger_value;
-      } else if (sa.trigger_type === 'before_close' && todayHours && !todayHours.is_closed) {
-        triggerTime = this._subtractMinutes(todayHours.close_time, parseInt(sa.trigger_value));
-      } else if (sa.trigger_type === 'after_open' && todayHours && !todayHours.is_closed) {
-        triggerTime = this._addMinutes(todayHours.open_time, parseInt(sa.trigger_value));
+      if (sa.trigger_type === 'specific_date') {
+        // trigger_value format: "2026-03-15 14:30"
+        const [date, time] = sa.trigger_value.split(' ');
+        if (date === todayStr) {
+          triggerTime = time;
+          shouldCheck = true;
+        }
+      } else {
+        // Day-of-week based triggers
+        let days;
+        try { days = JSON.parse(sa.days_of_week); } catch { continue; }
+        if (!days.includes(dayOfWeek)) continue;
+        shouldCheck = true;
+
+        if (sa.trigger_type === 'fixed_time') {
+          triggerTime = sa.trigger_value;
+        } else if (sa.trigger_type === 'before_close' && todayHours && !todayHours.is_closed) {
+          triggerTime = this._subtractMinutes(todayHours.close_time, parseInt(sa.trigger_value));
+        } else if (sa.trigger_type === 'after_open' && todayHours && !todayHours.is_closed) {
+          triggerTime = this._addMinutes(todayHours.open_time, parseInt(sa.trigger_value));
+        }
       }
 
-      if (!triggerTime) continue;
+      if (!shouldCheck || !triggerTime) continue;
 
       const key = `${sa.id}:${triggerTime}`;
       if (currentTime === triggerTime && !this._playedAnnouncements.has(key)) {
@@ -108,6 +122,11 @@ class SchedulerService {
         announcementService.playNow(sa.announcement_id).catch(err => {
           console.error('Failed to play scheduled announcement:', err.message);
         });
+
+        // Auto-deactivate one-time specific_date announcements after playing
+        if (sa.trigger_type === 'specific_date') {
+          getDb().prepare('UPDATE scheduled_announcements SET is_active = 0 WHERE id = ?').run(sa.id);
+        }
       }
     }
   }

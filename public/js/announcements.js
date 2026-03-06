@@ -51,20 +51,35 @@ async function loadScheduledAnnouncements() {
     fixed_time: 'O godzinie',
     before_close: 'Przed zamknięciem',
     after_open: 'Po otwarciu',
+    specific_date: 'Konkretna data',
   };
 
   for (const sa of scheduled) {
-    let days;
-    try { days = JSON.parse(sa.days_of_week); } catch { days = []; }
-    const dayNames = days.map(d => DAY_NAMES[d].substring(0, 3)).join(', ');
+    let daysInfo = '';
+    if (sa.trigger_type === 'specific_date') {
+      daysInfo = sa.trigger_value; // "2026-03-15 14:30"
+    } else {
+      let days;
+      try { days = JSON.parse(sa.days_of_week); } catch { days = []; }
+      daysInfo = 'Dni: ' + days.map(d => DAY_NAMES[d].substring(0, 3)).join(', ');
+    }
+
+    let triggerDisplay = '';
+    if (sa.trigger_type === 'specific_date') {
+      triggerDisplay = sa.trigger_value;
+    } else if (sa.trigger_type === 'fixed_time') {
+      triggerDisplay = sa.trigger_value;
+    } else {
+      triggerDisplay = sa.trigger_value + ' min';
+    }
 
     const div = document.createElement('div');
     div.className = `sm-scheduled-card ${sa.is_active ? '' : 'sm-scheduled-card--inactive'}`;
     div.innerHTML = `
       <div class="sm-scheduled-info">
         <strong>${esc(sa.announcement_name)}</strong>
-        <span>${triggerLabels[sa.trigger_type] || sa.trigger_type}: ${sa.trigger_type === 'fixed_time' ? sa.trigger_value : sa.trigger_value + ' min'}</span>
-        <small>Dni: ${dayNames}</small>
+        <span>${triggerLabels[sa.trigger_type] || sa.trigger_type}: ${triggerDisplay}</span>
+        <small>${daysInfo}</small>
         ${sa.volume_override ? `<small>Głośność: ${sa.volume_override}%</small>` : ''}
       </div>
       <div class="sm-scheduled-actions">
@@ -154,13 +169,15 @@ async function deleteAnnouncement(id) {
 async function scheduleAnnouncementPrompt(announcementId) {
   const modal = document.getElementById('modal');
   const modalBody = document.getElementById('modal-body');
+  const todayStr = new Date().toISOString().slice(0, 10);
   modalBody.innerHTML = `
     <h2>Zaplanuj komunikat</h2>
     <div class="sm-form-row"><label>Typ wyzwalacza:
       <select id="sched-type" onchange="schedTypeChange()">
         <option value="before_close">Przed zamknięciem</option>
         <option value="after_open">Po otwarciu</option>
-        <option value="fixed_time">O stałej godzinie</option>
+        <option value="fixed_time">O stałej godzinie (cyklicznie)</option>
+        <option value="specific_date">Konkretna data z kalendarza</option>
       </select>
     </label></div>
     <div class="sm-form-row" id="sched-minutes-row">
@@ -169,7 +186,11 @@ async function scheduleAnnouncementPrompt(announcementId) {
     <div class="sm-form-row" id="sched-time-row" style="display:none">
       <label>Godzina: <input type="time" id="sched-time" value="14:00"></label>
     </div>
-    <div class="sm-form-row"><label>Dni tygodnia:</label>
+    <div class="sm-form-row" id="sched-date-row" style="display:none">
+      <label>Data: <input type="date" id="sched-date" min="${todayStr}"></label>
+      <label style="margin-top:8px">Godzina: <input type="time" id="sched-date-time" value="14:00"></label>
+    </div>
+    <div class="sm-form-row" id="sched-days-row"><label>Dni tygodnia:</label>
       <div class="sm-days-checkboxes">
         ${DAY_NAMES.map((name, i) => `<label><input type="checkbox" value="${i}" ${i >= 1 && i <= 5 ? 'checked' : ''}> ${name.substring(0, 3)}</label>`).join('')}
       </div>
@@ -180,19 +201,40 @@ async function scheduleAnnouncementPrompt(announcementId) {
 
   window.schedTypeChange = () => {
     const type = document.getElementById('sched-type').value;
-    document.getElementById('sched-minutes-row').style.display = type === 'fixed_time' ? 'none' : '';
-    document.getElementById('sched-time-row').style.display = type === 'fixed_time' ? '' : 'none';
+    const isSpecific = type === 'specific_date';
+    const isFixed = type === 'fixed_time';
+    const isRelative = type === 'before_close' || type === 'after_open';
+    document.getElementById('sched-minutes-row').style.display = isRelative ? '' : 'none';
+    document.getElementById('sched-time-row').style.display = isFixed ? '' : 'none';
+    document.getElementById('sched-date-row').style.display = isSpecific ? '' : 'none';
+    document.getElementById('sched-days-row').style.display = isSpecific ? 'none' : '';
   };
 
   document.getElementById('sched-save').onclick = async () => {
     const type = document.getElementById('sched-type').value;
-    const days = [...document.querySelectorAll('.sm-days-checkboxes input:checked')].map(cb => parseInt(cb.value));
+    let triggerValue;
+    let days;
+
+    if (type === 'specific_date') {
+      const date = document.getElementById('sched-date').value;
+      const time = document.getElementById('sched-date-time').value;
+      if (!date || !time) { alert('Wybierz datę i godzinę!'); return; }
+      triggerValue = `${date} ${time}`;
+      days = [0, 1, 2, 3, 4, 5, 6]; // ignored for specific_date but required by schema
+    } else if (type === 'fixed_time') {
+      triggerValue = document.getElementById('sched-time').value;
+      days = [...document.querySelectorAll('.sm-days-checkboxes input:checked')].map(cb => parseInt(cb.value));
+    } else {
+      triggerValue = document.getElementById('sched-minutes').value;
+      days = [...document.querySelectorAll('.sm-days-checkboxes input:checked')].map(cb => parseInt(cb.value));
+    }
+
     const volume = document.getElementById('sched-volume').value;
 
     await API.post('/announcements/scheduled', {
       announcement_id: announcementId,
       trigger_type: type,
-      trigger_value: type === 'fixed_time' ? document.getElementById('sched-time').value : document.getElementById('sched-minutes').value,
+      trigger_value: triggerValue,
       days_of_week: days,
       is_active: true,
       volume_override: volume ? parseInt(volume) : null,
