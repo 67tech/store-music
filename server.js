@@ -38,6 +38,15 @@ getDb();
 // Auth routes (login page + login/logout API) — no auth required
 app.use(require('./src/routes/auth'));
 
+// Server restart endpoint (before api router)
+app.post('/api/server/restart', requireAuth, (req, res) => {
+  res.json({ success: true, message: 'Server restarting...' });
+  setTimeout(() => {
+    console.log('Restarting server...');
+    process.exit(0); // systemd or pm2 will restart the process
+  }, 500);
+});
+
 // Protect all other routes
 app.use('/api', requireAuth, require('./src/routes/api'));
 

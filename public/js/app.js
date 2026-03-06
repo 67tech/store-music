@@ -159,3 +159,24 @@ function changePassword() {
 
   modal.classList.add('sm-modal--open');
 }
+
+async function restartPlayer() {
+  if (!await smConfirm('Restartować silnik audio (mpv)?')) return;
+  try {
+    await API.post('/player/restart');
+    await smAlert('Player zrestartowany.');
+  } catch (err) {
+    await smAlert('Błąd: ' + err.message);
+  }
+}
+
+async function restartServer() {
+  if (!await smConfirm('Restartować serwer? Odtwarzanie zostanie przerwane.')) return;
+  try {
+    await API.post('/server/restart');
+    await smAlert('Serwer się restartuje. Strona odświeży się za chwilę...');
+    setTimeout(() => window.location.reload(), 3000);
+  } catch {
+    setTimeout(() => window.location.reload(), 3000);
+  }
+}

@@ -51,4 +51,13 @@ router.post('/volume', async (req, res) => {
   res.json(playerService.getState());
 });
 
+router.post('/restart', async (req, res) => {
+  try {
+    await playerService.restart();
+    res.json({ success: true, state: playerService.getState() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

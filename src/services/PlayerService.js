@@ -243,6 +243,32 @@ class PlayerService extends EventEmitter {
     this.state.shuffledIndices = indices;
   }
 
+  // --- Restart player (kill mpv, reinit) ---
+  async restart() {
+    this._stopPositionTracking();
+    if (this.mpv) {
+      try { await this.mpv.stop(); } catch {}
+      try { await this.mpv.quit(); } catch {}
+    }
+    this.mpv = null;
+    this.state.status = 'stopped';
+    this.state.currentTrack = null;
+    this.state.elapsed = 0;
+    this.state.duration = 0;
+    this._emitState();
+
+    // Kill any lingering mpv processes
+    const { execSync } = require('child_process');
+    try { execSync('pkill -f "node-mpv"', { stdio: 'pipe' }); } catch {}
+    try {
+      const fs = require('fs');
+      fs.unlinkSync('/tmp/node-mpv.sock');
+    } catch {}
+
+    await new Promise(r => setTimeout(r, 1000));
+    await this.init();
+  }
+
   // --- Announcement support ---
   async saveStateForAnnouncement() {
     // Get fresh position from mpv before saving
