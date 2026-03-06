@@ -24,21 +24,39 @@ class PlayerService extends EventEmitter {
   }
 
   async init() {
-    this.mpv = new mpvAPI({
-      audio_only: true,
-      auto_restart: true,
-      binary: '/usr/bin/mpv',
-    }, [
-      '--no-video',
-      '--no-terminal',
-      '--really-quiet',
-    ]);
+    // Detect mpv binary path
+    const { execSync } = require('child_process');
+    let mpvBinary = '/usr/bin/mpv';
+    try {
+      mpvBinary = execSync('which mpv').toString().trim();
+    } catch {}
 
     try {
-      await this.mpv.start();
+      // Test if mpv binary exists before spawning
+      try {
+        execSync(`"${mpvBinary}" --version`, { stdio: 'pipe' });
+      } catch {
+        throw new Error(`mpv not found at ${mpvBinary}`);
+      }
+
+      this.mpv = new mpvAPI({
+        audio_only: true,
+        binary: mpvBinary,
+        ipc_command: '--input-ipc-server',
+      }, [
+        '--no-video',
+        '--no-terminal',
+        '--really-quiet',
+      ]);
+
+      // node-mpv 1.x starts automatically via constructor
+      // Wait a moment for mpv to initialize
+      await new Promise(r => setTimeout(r, 1000));
     } catch (err) {
-      console.error('Failed to start mpv:', err.message);
-      console.error('Make sure mpv is installed: sudo apt install mpv');
+      console.error('mpv not available:', err.message);
+      console.error('Install mpv: brew install mpv (macOS) or sudo apt install mpv (Linux)');
+      console.warn('Server will run without audio playback capability');
+      this.mpv = null;
       return;
     }
 
@@ -51,21 +69,22 @@ class PlayerService extends EventEmitter {
       this._onTrackEnd();
     });
 
-    this.mpv.on('paused', () => {
-      this.state.status = 'paused';
-      this._emitState();
-    });
-
-    this.mpv.on('resumed', () => {
-      this.state.status = 'playing';
-      this._emitState();
+    this.mpv.on('statuschange', (status) => {
+      if (status && status.property === 'pause') {
+        if (status.value) {
+          this.state.status = 'paused';
+        } else {
+          this.state.status = 'playing';
+        }
+        this._emitState();
+      }
     });
   }
 
   _startPositionTracking() {
     this._stopPositionTracking();
     this._positionInterval = setInterval(async () => {
-      if (this.state.status !== 'playing') return;
+      if (this.state.status !== 'playing' || !this.mpv) return;
       try {
         this.state.elapsed = await this.mpv.getProperty('time-pos') || 0;
         this.state.duration = await this.mpv.getProperty('duration') || 0;
@@ -111,6 +130,7 @@ class PlayerService extends EventEmitter {
   }
 
   async play() {
+    if (!this.mpv) { console.warn('mpv not available'); return; }
     if (this.state.status === 'paused') {
       await this.mpv.resume();
       this.state.status = 'playing';
@@ -122,6 +142,7 @@ class PlayerService extends EventEmitter {
   }
 
   async pause() {
+    if (!this.mpv) return;
     if (this.state.status === 'playing') {
       await this.mpv.pause();
       this.state.status = 'paused';
@@ -131,7 +152,7 @@ class PlayerService extends EventEmitter {
   }
 
   async stop() {
-    try { await this.mpv.stop(); } catch {}
+    if (this.mpv) { try { await this.mpv.stop(); } catch {} }
     this.state.status = 'stopped';
     this.state.elapsed = 0;
     this.state.currentTrack = null;
@@ -161,12 +182,14 @@ class PlayerService extends EventEmitter {
   async setVolume(volume) {
     volume = Math.max(0, Math.min(100, volume));
     this.state.volume = volume;
-    try { await this.mpv.volume(volume); } catch {}
+    if (this.mpv) { try { await this.mpv.volume(volume); } catch {} }
     playlistService.updateSettings({ volume });
     this._emitState();
   }
 
   async _playCurrentTrack() {
+    if (!this.mpv) { console.warn('mpv not available'); return; }
+
     const idx = this.state.shuffle
       ? this.state.shuffledIndices[this.state.currentIndex]
       : this.state.currentIndex;
