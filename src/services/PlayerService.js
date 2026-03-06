@@ -338,6 +338,9 @@ class PlayerService extends EventEmitter {
     this.state.currentIndex = saved.currentIndex;
 
     if (saved.status === 'playing' || saved.status === 'paused') {
+      // Mute before loading so user doesn't hear the beginning
+      try { await this.mpv.volume(0); } catch {}
+
       await this._playCurrentTrack();
 
       // Wait for mpv to fully load the file before seeking
@@ -351,9 +354,11 @@ class PlayerService extends EventEmitter {
         } catch (err) {
           console.error('Seek after announcement failed:', err.message);
         }
+        // Wait for seek to complete
+        await new Promise(r => setTimeout(r, 300));
       }
 
-      // Fade in
+      // Fade in from 0 to saved volume
       const steps = 20;
       const stepMs = fadeDurationMs / steps;
       for (let i = 1; i <= steps; i++) {
