@@ -245,10 +245,16 @@ class PlayerService extends EventEmitter {
 
   // --- Announcement support ---
   async saveStateForAnnouncement() {
+    // Get fresh position from mpv before saving
+    let elapsed = this.state.elapsed;
+    if (this.mpv && this.state.status === 'playing') {
+      try { elapsed = await this.mpv.getProperty('time-pos') || elapsed; } catch {}
+    }
+
     this._savedState = {
       status: this.state.status,
       currentIndex: this.state.currentIndex,
-      elapsed: this.state.elapsed,
+      elapsed,
       volume: this.state.volume,
       playlist: this.state.playlist,
       playlistTracks: [...this.state.playlistTracks],
@@ -334,9 +340,17 @@ class PlayerService extends EventEmitter {
     if (saved.status === 'playing' || saved.status === 'paused') {
       await this._playCurrentTrack();
 
+      // Wait for mpv to fully load the file before seeking
+      await new Promise(r => setTimeout(r, 500));
+
       // Seek to saved position
       if (saved.elapsed > 0) {
-        try { await this.mpv.seek(saved.elapsed, 'absolute'); } catch {}
+        try {
+          await this.mpv.seek(saved.elapsed, 'absolute');
+          this.state.elapsed = saved.elapsed;
+        } catch (err) {
+          console.error('Seek after announcement failed:', err.message);
+        }
       }
 
       // Fade in
