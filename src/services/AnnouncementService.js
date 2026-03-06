@@ -18,6 +18,20 @@ class AnnouncementService {
     return this.getAnnouncement(result.lastInsertRowid);
   }
 
+  updateAnnouncement(id, data) {
+    const fields = [];
+    const values = [];
+    if (data.name !== undefined) { fields.push('name = ?'); values.push(data.name); }
+    if (data.filepath !== undefined) { fields.push('filepath = ?'); values.push(data.filepath); }
+    if (data.tts_text !== undefined) { fields.push('tts_text = ?'); values.push(data.tts_text); }
+    if (data.tts_engine !== undefined) { fields.push('tts_engine = ?'); values.push(data.tts_engine); }
+    if (data.duration !== undefined) { fields.push('duration = ?'); values.push(data.duration); }
+    if (fields.length === 0) return this.getAnnouncement(id);
+    values.push(id);
+    getDb().prepare(`UPDATE announcements SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+    return this.getAnnouncement(id);
+  }
+
   deleteAnnouncement(id) {
     getDb().prepare('DELETE FROM scheduled_announcements WHERE announcement_id = ?').run(id);
     return getDb().prepare('DELETE FROM announcements WHERE id = ?').run(id);

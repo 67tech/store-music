@@ -28,6 +28,7 @@ async function loadAnnouncements() {
         ${a.tts_text ? `<small class="sm-tts-text">"${esc(a.tts_text)}"</small>` : ''}
       </div>
       <div class="sm-announcement-actions">
+        <button onclick="editAnnouncement(${a.id})" class="sm-btn sm-btn--small">Edytuj</button>
         <button onclick="previewAnnouncement(${a.id})" class="sm-btn sm-btn--small" title="Odtwórz teraz">&#9654; Test</button>
         <button onclick="scheduleAnnouncementPrompt(${a.id})" class="sm-btn sm-btn--small">&#128339; Zaplanuj</button>
         <button onclick="deleteAnnouncement(${a.id})" class="sm-btn sm-btn--danger sm-btn--small">&#10005;</button>
@@ -148,6 +149,74 @@ async function createTts() {
       await loadAnnouncements();
     } catch (err) {
       document.getElementById('tts-status').textContent = 'Błąd: ' + err.message;
+    }
+  };
+
+  modal.classList.add('sm-modal--open');
+}
+
+async function editAnnouncement(id) {
+  const announcements = await API.get('/announcements');
+  const a = announcements.find(x => x.id === id);
+  if (!a) return;
+
+  const modal = document.getElementById('modal');
+  const modalBody = document.getElementById('modal-body');
+
+  const isTts = a.type === 'tts';
+
+  modalBody.innerHTML = `
+    <h2>Edytuj komunikat</h2>
+    <div class="sm-form-row"><label>Nazwa: <input type="text" id="edit-ann-name" value="${esc(a.name)}"></label></div>
+    ${isTts ? `
+      <div class="sm-form-row"><label>Tekst TTS:</label>
+        <textarea id="edit-ann-text" rows="4">${esc(a.tts_text || '')}</textarea>
+      </div>
+      <div class="sm-form-row"><label>Silnik:
+        <select id="edit-ann-engine">
+          <option value="google" ${a.tts_engine === 'google' ? 'selected' : ''}>Google TTS</option>
+          <option value="piper" ${a.tts_engine === 'piper' ? 'selected' : ''}>Piper (offline)</option>
+        </select>
+      </label></div>
+      <div class="sm-form-row"><label>Język:
+        <select id="edit-ann-lang">
+          <option value="pl">Polski</option>
+          <option value="en">English</option>
+          <option value="de">Deutsch</option>
+        </select>
+      </label></div>
+    ` : `
+      <p style="font-size: 0.85rem; color: var(--sm-text-muted);">Typ: Audio (${formatTime(a.duration)})</p>
+    `}
+    <div id="edit-ann-status"></div>
+    <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px;">
+      <button class="sm-btn" style="background: var(--sm-border); color: var(--sm-text);" onclick="document.getElementById('modal').classList.remove('sm-modal--open')">Anuluj</button>
+      <button id="edit-ann-save" class="sm-btn sm-btn--primary">Zapisz</button>
+    </div>
+  `;
+
+  document.getElementById('edit-ann-save').onclick = async () => {
+    const name = document.getElementById('edit-ann-name').value.trim();
+    if (!name) { await smAlert('Podaj nazwę!'); return; }
+
+    const data = { name };
+
+    if (isTts) {
+      const newText = document.getElementById('edit-ann-text').value.trim();
+      if (newText && newText !== a.tts_text) {
+        data.tts_text = newText;
+        data.tts_engine = document.getElementById('edit-ann-engine').value;
+        data.tts_language = document.getElementById('edit-ann-lang').value;
+        document.getElementById('edit-ann-status').textContent = 'Regenerowanie audio...';
+      }
+    }
+
+    try {
+      await API.put(`/announcements/${id}`, data);
+      modal.classList.remove('sm-modal--open');
+      await loadAnnouncements();
+    } catch (err) {
+      document.getElementById('edit-ann-status').textContent = 'Błąd: ' + err.message;
     }
   };
 

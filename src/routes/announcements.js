@@ -65,6 +65,44 @@ router.post('/tts', async (req, res) => {
   }
 });
 
+// Update announcement (name, regenerate TTS)
+router.put('/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const announcement = announcementService.getAnnouncement(id);
+    if (!announcement) return res.status(404).json({ error: 'Not found' });
+
+    const updateData = {};
+    if (req.body.name !== undefined) updateData.name = req.body.name;
+
+    // Regenerate TTS if text changed
+    if (req.body.tts_text !== undefined && announcement.type === 'tts') {
+      const engine = req.body.tts_engine || announcement.tts_engine || 'google';
+      const language = req.body.tts_language || 'pl';
+
+      // Delete old file
+      if (announcement.filepath) {
+        try { fs.unlinkSync(announcement.filepath); } catch {}
+      }
+
+      const { filepath, duration } = await ttsService.generate(req.body.tts_text, engine, language);
+      const filename = path.basename(filepath);
+      const destPath = path.join(config.announcementsDir, filename);
+      fs.copyFileSync(filepath, destPath);
+
+      updateData.filepath = destPath;
+      updateData.tts_text = req.body.tts_text;
+      updateData.tts_engine = engine;
+      updateData.duration = duration;
+    }
+
+    const updated = announcementService.updateAnnouncement(id, updateData);
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Delete announcement
 router.delete('/:id', (req, res) => {
   const announcement = announcementService.getAnnouncement(parseInt(req.params.id));
