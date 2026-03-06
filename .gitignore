@@ -1,0 +1,8 @@
+node_modules/
+data/store-music.db
+data/audio/*
+data/announcements/*
+data/tts-cache/*
+!data/audio/.gitkeep
+!data/announcements/.gitkeep
+!data/tts-cache/.gitkeep

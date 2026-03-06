@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Store Music Manager</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="sm-app">
+    <header class="sm-header">
+      <h1>Store Music Manager</h1>
+      <small>Panel zarządzania muzyką w sklepie</small>
+    </header>
+
+    <!-- Player - always visible -->
+    <div class="sm-player">
+      <div class="sm-player-info">
+        <span id="player-status" class="sm-status sm-status--stopped">stopped</span>
+        <h2 id="player-track-title">Brak utworu</h2>
+        <div class="sm-artist" id="player-track-artist"></div>
+        <div class="sm-player-playlist">Playlista: <span id="player-playlist-name">-</span></div>
+      </div>
+
+      <div class="sm-progress-container">
+        <span class="sm-time" id="player-elapsed">0:00</span>
+        <div class="sm-progress-bar">
+          <div class="sm-progress-fill" id="player-progress" style="width: 0%"></div>
+        </div>
+        <span class="sm-time" id="player-duration">0:00</span>
+      </div>
+
+      <div class="sm-controls">
+        <button id="btn-prev" title="Poprzedni">&#9198;</button>
+        <button id="btn-play" class="sm-btn-main" title="Odtwórz">&#9654;</button>
+        <button id="btn-pause" title="Pauza">&#9208;</button>
+        <button id="btn-stop" title="Stop">&#9209;</button>
+        <button id="btn-next" title="Następny">&#9197;</button>
+      </div>
+
+      <div class="sm-volume">
+        <label>&#128266;</label>
+        <input type="range" id="player-volume" min="0" max="100" value="50">
+        <span class="sm-vol-val" id="player-volume-val">50</span>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="sm-nav">
+      <button class="sm-nav-tab sm-nav-tab--active" data-tab="playlists">Playlisty</button>
+      <button class="sm-nav-tab" data-tab="tracks">Utwory</button>
+      <button class="sm-nav-tab" data-tab="schedule">Harmonogram</button>
+      <button class="sm-nav-tab" data-tab="announcements">Komunikaty</button>
+    </nav>
+
+    <!-- Playlists section -->
+    <div id="section-playlists" class="sm-section sm-section--active">
+      <div class="sm-section-header">
+        <h2>Playlisty</h2>
+        <button id="btn-create-playlist" class="sm-btn">+ Nowa playlista</button>
+      </div>
+      <div id="playlists-list"></div>
+    </div>
+
+    <!-- Tracks section -->
+    <div id="section-tracks" class="sm-section">
+      <div class="sm-section-header">
+        <h2>Biblioteka utworów</h2>
+        <button id="btn-upload-track" class="sm-btn">+ Wgraj pliki</button>
+        <input type="file" id="track-file-input" accept=".mp3,.wav,.ogg,.flac" multiple>
+      </div>
+      <div id="tracks-list"></div>
+    </div>
+
+    <!-- Schedule section -->
+    <div id="section-schedule" class="sm-section">
+      <div class="sm-section-block">
+        <h2>Godziny otwarcia</h2>
+        <div id="store-hours"></div>
+      </div>
+
+      <div class="sm-section-block">
+        <div class="sm-section-header">
+          <h3>Wyjątki (święta, skrócone godziny)</h3>
+          <button id="btn-add-exception" class="sm-btn sm-btn--small">+ Dodaj wyjątek</button>
+        </div>
+        <div id="exceptions-list"></div>
+      </div>
+
+      <div class="sm-section-block">
+        <h3>Ustawienia</h3>
+        <div id="app-settings"></div>
+      </div>
+    </div>
+
+    <!-- Announcements section -->
+    <div id="section-announcements" class="sm-section">
+      <div class="sm-section-block">
+        <div class="sm-section-header">
+          <h2>Komunikaty</h2>
+          <div style="display: flex; gap: 6px;">
+            <button id="btn-upload-announcement" class="sm-btn sm-btn--small">+ Wgraj audio</button>
+            <input type="file" id="announcement-file-input" accept=".mp3,.wav,.ogg,.flac">
+            <button id="btn-create-tts" class="sm-btn sm-btn--small">+ Generuj TTS</button>
+          </div>
+        </div>
+        <div id="announcements-list"></div>
+      </div>
+
+      <div class="sm-section-block">
+        <h3>Zaplanowane komunikaty</h3>
+        <div id="scheduled-announcements-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal" class="sm-modal">
+    <div class="sm-modal-content">
+      <button id="modal-close" class="sm-modal-close">&#10005;</button>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/player.js"></script>
+  <script src="/js/playlists.js"></script>
+  <script src="/js/schedule.js"></script>
+  <script src="/js/announcements.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
