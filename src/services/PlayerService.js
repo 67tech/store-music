@@ -271,29 +271,50 @@ class PlayerService extends EventEmitter {
   }
 
   async playAnnouncementFile(filepath, volume) {
+    if (!this.mpv) { console.warn('mpv not available for announcement'); return; }
+
     try {
       await this.mpv.load(filepath);
       await this.mpv.volume(volume ?? this.state.volume);
+      // Ensure playback starts (mpv might be paused from fadeOut)
+      try { await this.mpv.resume(); } catch {}
     } catch (err) {
       console.error('Failed to play announcement:', err.message);
+      return;
     }
 
-    // Wait for announcement to finish
+    // Wait for announcement to finish using 'stopped' event
     return new Promise((resolve) => {
+      let resolved = false;
+      const done = () => {
+        if (resolved) return;
+        resolved = true;
+        this.mpv.removeListener('stopped', onStopped);
+        resolve();
+      };
+
+      const onStopped = () => done();
+      this.mpv.on('stopped', onStopped);
+
+      // Fallback: poll time-pos to detect end
       const checkInterval = setInterval(async () => {
+        if (resolved) { clearInterval(checkInterval); return; }
         try {
-          const idle = await this.mpv.getProperty('idle-active');
-          if (idle) {
+          const pos = await this.mpv.getProperty('time-pos');
+          const dur = await this.mpv.getProperty('duration');
+          if (pos && dur && pos >= dur - 0.5) {
             clearInterval(checkInterval);
-            resolve();
+            done();
           }
         } catch {
+          // mpv might have stopped already
           clearInterval(checkInterval);
-          resolve();
+          done();
         }
       }, 500);
+
       // Safety timeout: 5 minutes max
-      setTimeout(() => { clearInterval(checkInterval); resolve(); }, 300000);
+      setTimeout(() => { clearInterval(checkInterval); done(); }, 300000);
     });
   }
 
