@@ -88,6 +88,13 @@ function initSchema() {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Seed default store hours (Mon-Sat open, Sun closed)
@@ -104,6 +111,14 @@ function initSchema() {
       insert.run(6, '09:00', '18:00', 0); // Saturday shorter
     });
     seedHours();
+  }
+
+  // Seed default admin user (admin / admin) — change password on first login!
+  const userCount = db.prepare('SELECT COUNT(*) as cnt FROM users').get();
+  if (userCount.cnt === 0) {
+    const bcrypt = require('bcryptjs');
+    const hash = bcrypt.hashSync('admin', 10);
+    db.prepare('INSERT INTO users (username, password) VALUES (?, ?)').run('admin', hash);
   }
 
   // Seed default settings

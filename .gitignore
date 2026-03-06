@@ -6,3 +6,5 @@ data/tts-cache/*
 !data/audio/.gitkeep
 !data/announcements/.gitkeep
 !data/tts-cache/.gitkeep
+*.db-shm
+*.db-wal
