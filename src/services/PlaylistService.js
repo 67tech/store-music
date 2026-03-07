@@ -66,11 +66,25 @@ class PlaylistService {
     return playlist;
   }
 
-  createPlaylist({ name, description, shuffle }) {
+  createPlaylist({ name, description, shuffle, copyFromPlaylistId }) {
     const result = getDb().prepare(
       'INSERT INTO playlists (name, description, shuffle) VALUES (?, ?, ?)'
     ).run(name, description || '', shuffle ? 1 : 0);
-    return this.getPlaylist(result.lastInsertRowid);
+    const newId = result.lastInsertRowid;
+
+    if (copyFromPlaylistId) {
+      const tracks = getDb().prepare(
+        'SELECT track_id, position FROM playlist_tracks WHERE playlist_id = ? AND one_shot = 0 ORDER BY position'
+      ).all(copyFromPlaylistId);
+      const insert = getDb().prepare(
+        'INSERT INTO playlist_tracks (playlist_id, track_id, position) VALUES (?, ?, ?)'
+      );
+      for (const t of tracks) {
+        insert.run(newId, t.track_id, t.position);
+      }
+    }
+
+    return this.getPlaylist(newId);
   }
 
   updatePlaylist(id, { name, description, shuffle, is_default }) {
@@ -177,6 +191,60 @@ class PlaylistService {
     });
     update();
     return this.getSettings();
+  }
+
+  // --- Playlist Calendar ---
+
+  getCalendarEntries(startDate, endDate) {
+    return getDb().prepare(`
+      SELECT pc.*, p.name as playlist_name,
+        (SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = pc.playlist_id) as track_count
+      FROM playlist_calendar pc
+      LEFT JOIN playlists p ON p.id = pc.playlist_id
+      WHERE pc.date >= ? AND pc.date <= ?
+      ORDER BY pc.date
+    `).all(startDate, endDate);
+  }
+
+  getCalendarEntry(date) {
+    return getDb().prepare(`
+      SELECT pc.*, p.name as playlist_name
+      FROM playlist_calendar pc
+      LEFT JOIN playlists p ON p.id = pc.playlist_id
+      WHERE pc.date = ?
+    `).get(date);
+  }
+
+  setCalendarEntry(date, playlistId, label) {
+    getDb().prepare(`
+      INSERT OR REPLACE INTO playlist_calendar (date, playlist_id, label) VALUES (?, ?, ?)
+    `).run(date, playlistId, label || '');
+    return this.getCalendarEntry(date);
+  }
+
+  setCalendarBulk(dates, playlistId, label) {
+    const upsert = getDb().prepare('INSERT OR REPLACE INTO playlist_calendar (date, playlist_id, label) VALUES (?, ?, ?)');
+    const bulk = getDb().transaction(() => {
+      for (const date of dates) {
+        upsert.run(date, playlistId, label || '');
+      }
+    });
+    bulk();
+  }
+
+  deleteCalendarEntry(date) {
+    getDb().prepare('DELETE FROM playlist_calendar WHERE date = ?').run(date);
+  }
+
+  getTodayPlaylist() {
+    const today = new Date().toISOString().split('T')[0];
+    const entry = getDb().prepare(`
+      SELECT pc.playlist_id, p.name as playlist_name
+      FROM playlist_calendar pc
+      LEFT JOIN playlists p ON p.id = pc.playlist_id
+      WHERE pc.date = ?
+    `).get(today);
+    return entry || null;
   }
 }
 

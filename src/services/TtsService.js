@@ -14,7 +14,12 @@ class TtsService {
     const filename = `${uuidv4()}.mp3`;
     const filepath = path.join(config.ttsCacheDir, filename);
 
-    if (engine === 'piper') {
+    if (engine === 'elevenlabs') {
+      const apiKey = settings.elevenlabsApiKey;
+      if (!apiKey) throw new Error('Brak klucza API ElevenLabs — ustaw go w Ustawienia > TTS');
+      const voiceId = voice || settings.elevenlabsVoiceId || 'onwK4e9ZLuTAKqWW03F9'; // Default: Daniel
+      await this._generateElevenLabs(text, filepath, apiKey, voiceId);
+    } else if (engine === 'piper') {
       await this._generatePiper(text, filepath, language);
     } else if (engine === 'edge') {
       await this._generateEdge(text, filepath, voice || 'pl-PL-ZofiaNeural');
@@ -85,6 +90,77 @@ class TtsService {
         }
         resolve(voices);
       });
+    });
+  }
+
+  async _generateElevenLabs(text, outputPath, apiKey, voiceId) {
+    const https = require('https');
+
+    const postData = JSON.stringify({
+      text,
+      model_id: 'eleven_multilingual_v2',
+      voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+    });
+
+    return new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: 'api.elevenlabs.io',
+        path: `/v1/text-to-speech/${voiceId}`,
+        method: 'POST',
+        headers: {
+          'xi-api-key': apiKey,
+          'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg',
+        },
+      }, (res) => {
+        if (res.statusCode !== 200) {
+          let body = '';
+          res.on('data', c => body += c);
+          res.on('end', () => reject(new Error(`ElevenLabs API error ${res.statusCode}: ${body}`)));
+          return;
+        }
+        const file = fs.createWriteStream(outputPath);
+        res.pipe(file);
+        file.on('finish', () => { file.close(); resolve(); });
+        file.on('error', reject);
+      });
+      req.on('error', reject);
+      req.write(postData);
+      req.end();
+    });
+  }
+
+  async getElevenLabsVoices(apiKey) {
+    const https = require('https');
+
+    return new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: 'api.elevenlabs.io',
+        path: '/v1/voices',
+        method: 'GET',
+        headers: { 'xi-api-key': apiKey },
+      }, (res) => {
+        let body = '';
+        res.on('data', c => body += c);
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            reject(new Error(`ElevenLabs API error ${res.statusCode}: ${body}`));
+            return;
+          }
+          try {
+            const data = JSON.parse(body);
+            const voices = (data.voices || []).map(v => ({
+              id: v.voice_id,
+              name: v.name,
+              category: v.category || '',
+              labels: v.labels || {},
+            }));
+            resolve(voices);
+          } catch (e) { reject(e); }
+        });
+      });
+      req.on('error', reject);
+      req.end();
     });
   }
 

@@ -125,16 +125,25 @@ class PlayerService extends EventEmitter {
       } catch {}
       this._emitState();
 
-      // Crossfade trigger: when near end of track
+      // Crossfade trigger: silence detection + time-based fallback
       if (!this._crossfading && !this._announcementMode && this.state.duration > 0) {
         const settings = playlistService.getSettings();
         const crossfadeSec = (settings.crossfadeDurationMs || 0) / 1000;
         const currentTrack = this.state.currentTrack;
-        // Don't crossfade one-shot tracks (announcements/ads in queue)
-        if (crossfadeSec > 0 && !currentTrack?.one_shot && this.state.elapsed > 0
-            && this.state.duration - this.state.elapsed <= crossfadeSec
-            && this.state.duration - this.state.elapsed > crossfadeSec - 1.5) {
-          this._triggerCrossfade(crossfadeSec);
+
+        if (crossfadeSec > 0 && !currentTrack?.one_shot && this.state.elapsed > 0) {
+          const remaining = this.state.duration - this.state.elapsed;
+
+          // Check if track has a detected silence point (effective end)
+          const silenceStart = currentTrack?._silenceStart;
+          if (silenceStart && this.state.elapsed >= silenceStart && remaining > 0.5) {
+            // Silence detected — start crossfade now with remaining time as duration
+            const fadeDur = Math.min(remaining, crossfadeSec);
+            this._triggerCrossfade(fadeDur);
+          } else if (remaining <= crossfadeSec && remaining > crossfadeSec - 1.5) {
+            // Fallback: fixed time from end (for tracks without silence data)
+            this._triggerCrossfade(crossfadeSec);
+          }
         }
       }
     }, 1000);
@@ -192,6 +201,16 @@ class PlayerService extends EventEmitter {
 
   setLoop(enabled) {
     this.state.loop = !!enabled;
+    this._emitState();
+  }
+
+  setShuffle(enabled) {
+    this.state.shuffle = !!enabled;
+    if (this.state.shuffle) {
+      this._generateShuffleOrder();
+    } else {
+      this.state.shuffledIndices = [];
+    }
     this._emitState();
   }
 
@@ -340,6 +359,11 @@ class PlayerService extends EventEmitter {
       this._startPositionTracking();
 
       this._addToRecentlyPlayed(track);
+
+      // Detect silence at the end of the track (for smart crossfade)
+      if (!track.one_shot && track.filepath) {
+        this._detectSilence(track);
+      }
 
       try {
         getDb().prepare(
@@ -529,6 +553,37 @@ class PlayerService extends EventEmitter {
 
     await new Promise(r => setTimeout(r, 1000));
     await this.init();
+  }
+
+  // --- Silence detection for smart crossfade ---
+  _detectSilence(track) {
+    const { execFile } = require('child_process');
+    const filepath = track.filepath;
+
+    // Analyze last 30 seconds of the track for silence
+    const startPos = Math.max(0, (track.duration || 0) - 30);
+    const args = [
+      '-i', filepath,
+      '-ss', String(startPos),
+      '-af', 'silencedetect=noise=-50dB:d=0.3',
+      '-f', 'null', '-'
+    ];
+
+    execFile('ffmpeg', args, { timeout: 10000 }, (err, stdout, stderr) => {
+      if (err && err.killed) return; // timeout
+      const output = stderr || '';
+      // Find all silence_start timestamps
+      const matches = [...output.matchAll(/silence_start:\s*([\d.]+)/g)];
+      if (matches.length > 0) {
+        // Take the last silence_start (nearest to end of track)
+        const lastSilenceStart = parseFloat(matches[matches.length - 1][1]);
+        // Only use if it's in the last 15 seconds of the track
+        if (track.duration && lastSilenceStart > track.duration - 15 && lastSilenceStart < track.duration - 0.5) {
+          track._silenceStart = lastSilenceStart;
+          console.log(`Silence detected in "${track.title}" at ${lastSilenceStart.toFixed(1)}s (duration: ${track.duration}s)`);
+        }
+      }
+    });
   }
 
   // --- Announcement support (uses inactive deck for announcement audio) ---

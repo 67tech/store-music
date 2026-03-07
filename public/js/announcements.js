@@ -124,13 +124,14 @@ async function createTts() {
     </div>
     <div class="sm-form-row"><label>Silnik:
       <select id="tts-engine" onchange="onTtsEngineChange()">
+        <option value="elevenlabs">ElevenLabs (premium)</option>
         <option value="edge">Edge TTS (najlepsze głosy)</option>
         <option value="google">Google TTS</option>
         <option value="piper">Piper (offline)</option>
       </select>
     </label></div>
-    <div class="sm-form-row" id="ins-tts-voice-row">
-      <label>Głos:
+    <div class="sm-form-row" id="ins-tts-voice-row" style="display:none;">
+      <label>Głos Edge:
         <select id="ins-tts-voice">
           <optgroup label="Polski">
             <option value="pl-PL-ZofiaNeural" selected>Zofia (kobieta, PL)</option>
@@ -156,9 +157,14 @@ async function createTts() {
         <option value="de">Deutsch</option>
       </select>
     </label></div>
-    <button id="tts-generate" class="sm-btn sm-btn--primary">Generuj</button>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button id="tts-preview" class="sm-btn" onclick="previewTtsFromForm('announcement')">&#128266; Podsluchaj</button>
+      <button id="tts-generate" class="sm-btn sm-btn--primary">Generuj</button>
+    </div>
     <div id="tts-status"></div>
   `;
+  // Trigger engine change to show correct voice selector
+  onTtsEngineChange();
 
   document.getElementById('tts-generate').onclick = async () => {
     const text = document.getElementById('tts-text').value.trim();
@@ -171,8 +177,8 @@ async function createTts() {
         name: document.getElementById('tts-name').value || text.substring(0, 50),
         text,
         engine,
-        language: engine !== 'edge' ? document.getElementById('tts-lang').value : undefined,
-        voice: engine === 'edge' ? document.getElementById('ins-tts-voice').value : undefined,
+        language: (engine === 'google' || engine === 'piper') ? document.getElementById('tts-lang').value : undefined,
+        voice: _getVoiceForEngine(engine),
       });
       modal.classList.remove('sm-modal--open');
       await loadAnnouncements();
@@ -202,16 +208,38 @@ async function editAnnouncement(id) {
         <textarea id="edit-ann-text" rows="4">${esc(a.tts_text || '')}</textarea>
       </div>
       <div class="sm-form-row"><label>Silnik:
-        <select id="edit-ann-engine">
+        <select id="tts-engine" onchange="onTtsEngineChange()">
+          <option value="elevenlabs" ${a.tts_engine === 'elevenlabs' ? 'selected' : ''}>ElevenLabs (premium)</option>
+          <option value="edge" ${a.tts_engine === 'edge' ? 'selected' : ''}>Edge TTS (najlepsze głosy)</option>
           <option value="google" ${a.tts_engine === 'google' ? 'selected' : ''}>Google TTS</option>
           <option value="piper" ${a.tts_engine === 'piper' ? 'selected' : ''}>Piper (offline)</option>
         </select>
       </label></div>
-      <div class="sm-form-row"><label>Język:
-        <select id="edit-ann-lang">
-          <option value="pl">Polski</option>
-          <option value="en">English</option>
-          <option value="de">Deutsch</option>
+      <div class="sm-form-row" id="ins-tts-voice-row" style="display:none;">
+        <label>Głos Edge:
+          <select id="ins-tts-voice">
+            <optgroup label="Polski">
+              <option value="pl-PL-ZofiaNeural" ${a.tts_voice === 'pl-PL-ZofiaNeural' ? 'selected' : ''}>Zofia (kobieta, PL)</option>
+              <option value="pl-PL-MarekNeural" ${a.tts_voice === 'pl-PL-MarekNeural' ? 'selected' : ''}>Marek (mężczyzna, PL)</option>
+            </optgroup>
+            <optgroup label="English">
+              <option value="en-US-JennyNeural" ${a.tts_voice === 'en-US-JennyNeural' ? 'selected' : ''}>Jenny (female, US)</option>
+              <option value="en-US-GuyNeural" ${a.tts_voice === 'en-US-GuyNeural' ? 'selected' : ''}>Guy (male, US)</option>
+              <option value="en-GB-SoniaNeural" ${a.tts_voice === 'en-GB-SoniaNeural' ? 'selected' : ''}>Sonia (female, UK)</option>
+              <option value="en-GB-RyanNeural" ${a.tts_voice === 'en-GB-RyanNeural' ? 'selected' : ''}>Ryan (male, UK)</option>
+            </optgroup>
+            <optgroup label="Deutsch">
+              <option value="de-DE-KatjaNeural" ${a.tts_voice === 'de-DE-KatjaNeural' ? 'selected' : ''}>Katja (weiblich, DE)</option>
+              <option value="de-DE-ConradNeural" ${a.tts_voice === 'de-DE-ConradNeural' ? 'selected' : ''}>Conrad (männlich, DE)</option>
+            </optgroup>
+          </select>
+        </label>
+      </div>
+      <div class="sm-form-row" id="ins-tts-lang-row" style="display:none;"><label>Język:
+        <select id="tts-lang">
+          <option value="pl" ${(a.tts_language || 'pl') === 'pl' ? 'selected' : ''}>Polski</option>
+          <option value="en" ${a.tts_language === 'en' ? 'selected' : ''}>English</option>
+          <option value="de" ${a.tts_language === 'de' ? 'selected' : ''}>Deutsch</option>
         </select>
       </label></div>
     ` : `
@@ -224,6 +252,17 @@ async function editAnnouncement(id) {
     </div>
   `;
 
+  if (isTts) {
+    onTtsEngineChange();
+    // If editing an ElevenLabs announcement, pre-select the saved voice after voices load
+    if (a.tts_engine === 'elevenlabs' && a.tts_voice) {
+      setTimeout(() => {
+        const elVoiceSel = document.getElementById('ins-el-voice');
+        if (elVoiceSel) elVoiceSel.value = a.tts_voice;
+      }, 1500);
+    }
+  }
+
   document.getElementById('edit-ann-save').onclick = async () => {
     const name = document.getElementById('edit-ann-name').value.trim();
     if (!name) { await smAlert('Podaj nazwę!'); return; }
@@ -233,9 +272,11 @@ async function editAnnouncement(id) {
     if (isTts) {
       const newText = document.getElementById('edit-ann-text').value.trim();
       if (newText && newText !== a.tts_text) {
+        const engine = document.getElementById('tts-engine').value;
         data.tts_text = newText;
-        data.tts_engine = document.getElementById('edit-ann-engine').value;
-        data.tts_language = document.getElementById('edit-ann-lang').value;
+        data.tts_engine = engine;
+        data.tts_language = document.getElementById('tts-lang')?.value;
+        data.tts_voice = _getVoiceForEngine(engine);
         document.getElementById('edit-ann-status').textContent = 'Regenerowanie audio...';
       }
     }
@@ -469,6 +510,75 @@ async function deleteScheduled(id) {
   if (!await smConfirm('Usunąć zaplanowany komunikat?')) return;
   await API.del(`/announcements/scheduled/${id}`);
   await loadScheduledAnnouncements();
+}
+
+// TTS Preview — plays generated TTS in browser without affecting mpv
+let _ttsPreviewAudio = null;
+function previewTtsAudio(text, engine, language, voice, btn) {
+  // Stop any currently playing preview
+  if (_ttsPreviewAudio) {
+    _ttsPreviewAudio.pause();
+    _ttsPreviewAudio = null;
+    document.querySelectorAll('.sm-btn--tts-previewing').forEach(b => b.classList.remove('sm-btn--tts-previewing'));
+    if (btn && btn.classList.contains('sm-btn--tts-previewing')) return; // was toggle-off
+  }
+
+  if (!text) return;
+  if (btn) {
+    btn.classList.add('sm-btn--tts-previewing');
+    btn.disabled = true;
+    btn.textContent = 'Generowanie...';
+  }
+
+  fetch('/api/announcements/tts/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, engine, language, voice }),
+  })
+    .then(r => {
+      if (!r.ok) throw new Error('TTS preview failed');
+      return r.blob();
+    })
+    .then(blob => {
+      const url = URL.createObjectURL(blob);
+      _ttsPreviewAudio = new Audio(url);
+      _ttsPreviewAudio.onended = () => {
+        if (btn) { btn.classList.remove('sm-btn--tts-previewing'); btn.textContent = '\u{1F50A} Podsluchaj'; }
+        _ttsPreviewAudio = null;
+        URL.revokeObjectURL(url);
+      };
+      if (btn) { btn.disabled = false; btn.textContent = '\u25A0 Stop'; }
+      _ttsPreviewAudio.play();
+    })
+    .catch(() => {
+      if (btn) { btn.disabled = false; btn.classList.remove('sm-btn--tts-previewing'); btn.textContent = '\u{1F50A} Podsluchaj'; }
+    });
+}
+
+function _getVoiceForEngine(engine) {
+  if (engine === 'edge') return document.getElementById('ins-tts-voice')?.value;
+  if (engine === 'elevenlabs') return document.getElementById('ins-el-voice')?.value;
+  return undefined;
+}
+
+function previewTtsFromForm(context) {
+  let text, engine, language, voice, btn;
+  if (context === 'ad') {
+    text = document.getElementById('ad-tts-text')?.value?.trim();
+    engine = document.getElementById('ad-tts-engine')?.value || 'google';
+    language = (engine === 'google' || engine === 'piper') ? (document.getElementById('ad-tts-lang')?.value || 'pl') : undefined;
+    voice = engine === 'edge' ? document.getElementById('ad-tts-voice')?.value :
+            engine === 'elevenlabs' ? document.getElementById('ad-tts-el-voice')?.value : undefined;
+    btn = document.getElementById('ad-tts-preview');
+  } else {
+    text = document.getElementById('tts-text')?.value?.trim();
+    engine = (document.getElementById('tts-engine') || document.getElementById('ins-tts-engine'))?.value || 'edge';
+    language = (engine === 'google' || engine === 'piper') ? (document.getElementById('tts-lang')?.value || 'pl') : undefined;
+    voice = _getVoiceForEngine(engine);
+    btn = document.getElementById('tts-preview');
+  }
+  if (!text) { smAlert('Wpisz tekst do odczytania!'); return; }
+  previewTtsAudio(text, engine, language, voice, btn);
 }
 
 async function loadScheduledAnnouncementsPanel() {

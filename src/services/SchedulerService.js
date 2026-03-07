@@ -1,5 +1,8 @@
 const cron = require('node-cron');
+const fs = require('fs');
+const path = require('path');
 const { getDb } = require('../db');
+const config = require('../config');
 const playerService = require('./PlayerService');
 const playlistService = require('./PlaylistService');
 const announcementService = require('./AnnouncementService');
@@ -10,12 +13,17 @@ class SchedulerService {
     this._cronJob = null;
     this._playedAnnouncements = new Set(); // Track what's been played today to avoid repeats
     this._lastDateReset = '';
+    this._lastLineupHash = '';
+    this._lineupWatcher = null;
   }
 
   start() {
     // Check every minute
     this._cronJob = cron.schedule('* * * * *', () => this._tick());
     console.log('Scheduler started — checking every minute');
+
+    // Watch lineup file for changes
+    this._startLineupWatcher();
   }
 
   stop() {
@@ -93,6 +101,7 @@ class SchedulerService {
     for (const sa of scheduled) {
       let triggerTime = null;
       let shouldCheck = false;
+      let repeatEndTime = null;
 
       if (sa.trigger_type === 'specific_date') {
         // trigger_value format: "2026-03-15 14:30"
@@ -114,32 +123,50 @@ class SchedulerService {
           triggerTime = this._subtractMinutes(todayHours.close_time, parseInt(sa.trigger_value));
         } else if (sa.trigger_type === 'after_open' && todayHours && !todayHours.is_closed) {
           triggerTime = this._addMinutes(todayHours.open_time, parseInt(sa.trigger_value));
+        } else if (sa.trigger_type === 'before_match' && todayHours && !todayHours.is_closed && todayHours.match_time) {
+          triggerTime = this._subtractMinutes(todayHours.match_time, parseInt(sa.trigger_value));
+          repeatEndTime = todayHours.match_time;
         }
       }
 
       if (!shouldCheck || !triggerTime) continue;
 
-      const key = `${sa.id}:${triggerTime}`;
-      if (currentTime === triggerTime && !this._playedAnnouncements.has(key)) {
-        this._playedAnnouncements.add(key);
-        const playMode = sa.play_mode || 'interrupt';
-        console.log(`Scheduled announcement: ${sa.announcement_name} at ${triggerTime} (${playMode})`);
+      // Handle repeat_interval: generate all trigger times in the window
+      const repeatInterval = sa.repeat_interval || 0;
+      const triggerTimes = [triggerTime];
 
-        if (playMode === 'queue') {
-          // Queue mode: insert as one-shot track to play next
-          this._queueAnnouncement(sa).catch(err => {
-            console.error('Failed to queue scheduled announcement:', err.message);
-          });
-        } else {
-          // Interrupt mode (default): fade out, play, fade in
-          announcementService.playNow(sa.announcement_id).catch(err => {
-            console.error('Failed to play scheduled announcement:', err.message);
-          });
+      if (repeatInterval > 0) {
+        const endTime = sa.repeat_until || repeatEndTime || (todayHours ? todayHours.close_time : null);
+        if (endTime) {
+          let nextTime = this._addMinutes(triggerTime, repeatInterval);
+          while (nextTime && nextTime < endTime) {
+            triggerTimes.push(nextTime);
+            nextTime = this._addMinutes(nextTime, repeatInterval);
+          }
         }
+      }
 
-        // Auto-deactivate one-time specific_date announcements after playing
-        if (sa.trigger_type === 'specific_date') {
-          getDb().prepare('UPDATE scheduled_announcements SET is_active = 0 WHERE id = ?').run(sa.id);
+      for (const tt of triggerTimes) {
+        const key = `${sa.id}:${tt}`;
+        if (currentTime === tt && !this._playedAnnouncements.has(key)) {
+          this._playedAnnouncements.add(key);
+          const playMode = sa.play_mode || 'interrupt';
+          console.log(`Scheduled announcement: ${sa.announcement_name} at ${tt} (${playMode})${repeatInterval ? ` [repeat every ${repeatInterval}m]` : ''}`);
+
+          if (playMode === 'queue') {
+            this._queueAnnouncement(sa).catch(err => {
+              console.error('Failed to queue scheduled announcement:', err.message);
+            });
+          } else {
+            announcementService.playNow(sa.announcement_id).catch(err => {
+              console.error('Failed to play scheduled announcement:', err.message);
+            });
+          }
+
+          // Auto-deactivate one-time specific_date announcements after last trigger
+          if (sa.trigger_type === 'specific_date' && tt === triggerTimes[triggerTimes.length - 1]) {
+            getDb().prepare('UPDATE scheduled_announcements SET is_active = 0 WHERE id = ?').run(sa.id);
+          }
         }
       }
     }
@@ -159,11 +186,16 @@ class SchedulerService {
       return { date: todayStr, closed: true, hours: null, events: [] };
     }
 
+    // Check calendar playlist for this date
+    const calendarEntry = playlistService.getCalendarEntry(todayStr);
+
     events.push({
       time: hours.open_time,
       type: 'open',
       label: 'Otwarcie sklepu',
-      detail: settings.autoPlayOnOpen ? 'Auto-start playlisty' : null,
+      detail: settings.autoPlayOnOpen
+        ? (calendarEntry ? `Auto-start: ${calendarEntry.playlist_name}` : 'Auto-start playlisty')
+        : (calendarEntry ? `Playlista: ${calendarEntry.playlist_name}` : null),
     });
 
     const scheduled = getDb().prepare(`
@@ -190,19 +222,27 @@ class SchedulerService {
           triggerTime = this._subtractMinutes(hours.close_time, parseInt(sa.trigger_value));
         } else if (sa.trigger_type === 'after_open') {
           triggerTime = this._addMinutes(hours.open_time, parseInt(sa.trigger_value));
+        } else if (sa.trigger_type === 'before_match' && hours.match_time) {
+          triggerTime = this._subtractMinutes(hours.match_time, parseInt(sa.trigger_value));
         }
       }
 
       if (triggerTime) {
+        const repeatInterval = sa.repeat_interval || 0;
+        let detail = sa.trigger_type === 'before_close' ? `${sa.trigger_value} min przed zamknięciem` :
+                     sa.trigger_type === 'after_open' ? `${sa.trigger_value} min po otwarciu` :
+                     sa.trigger_type === 'before_match' ? `${sa.trigger_value} min przed meczem` :
+                     sa.trigger_type === 'specific_date' ? 'Jednorazowy' : 'Cykliczny';
+        if (repeatInterval > 0) detail += ` (co ${repeatInterval} min)`;
+
         events.push({
           time: triggerTime,
           type: 'announcement',
           label: sa.announcement_name,
-          detail: sa.trigger_type === 'before_close' ? `${sa.trigger_value} min przed zamknięciem` :
-                  sa.trigger_type === 'after_open' ? `${sa.trigger_value} min po otwarciu` :
-                  sa.trigger_type === 'specific_date' ? 'Jednorazowy' : 'Cykliczny',
+          detail,
           duration: sa.duration || 0,
           volume: sa.volume_override,
+          repeat_interval: repeatInterval || undefined,
         });
       }
     }
@@ -322,14 +362,106 @@ class SchedulerService {
   }
 
   async _autoPlay() {
-    const defaultPlaylist = playlistService.getDefaultPlaylist();
-    if (defaultPlaylist && defaultPlaylist.tracks.length > 0) {
+    // Check calendar for today's playlist override
+    const calendarEntry = playlistService.getTodayPlaylist();
+    let playlist;
+    if (calendarEntry) {
+      playlist = playlistService.getPlaylist(calendarEntry.playlist_id);
+      if (playlist) console.log(`Calendar override: using playlist "${playlist.name}" for today`);
+    }
+    if (!playlist) {
+      playlist = playlistService.getDefaultPlaylist();
+    }
+    if (playlist && playlist.tracks.length > 0) {
       try {
-        await playerService.playPlaylist(defaultPlaylist.id);
-        console.log(`Auto-started playlist "${defaultPlaylist.name}" at opening`);
+        await playerService.playPlaylist(playlist.id);
+        console.log(`Auto-started playlist "${playlist.name}" at opening`);
       } catch (err) {
         console.error('Auto-play failed:', err.message);
       }
+    }
+  }
+
+  _startLineupWatcher() {
+    const lineupPath = path.join(config.dataDir, 'matchday', 'lineup.txt');
+    const lineupDir = path.dirname(lineupPath);
+    fs.mkdirSync(lineupDir, { recursive: true });
+
+    // Read initial hash
+    try {
+      const content = fs.readFileSync(lineupPath, 'utf-8');
+      this._lastLineupHash = this._simpleHash(content);
+    } catch { /* file doesn't exist yet */ }
+
+    // Poll every 30 seconds (fs.watch is unreliable on some platforms)
+    this._lineupWatcher = setInterval(() => {
+      try {
+        const content = fs.readFileSync(lineupPath, 'utf-8').trim();
+        if (!content) return;
+        const hash = this._simpleHash(content);
+        if (hash !== this._lastLineupHash && this._lastLineupHash !== '') {
+          this._lastLineupHash = hash;
+          console.log('Lineup file changed — generating TTS and scheduling...');
+          this._processLineupChange(content).catch(err => {
+            console.error('Lineup processing error:', err.message);
+          });
+        }
+        this._lastLineupHash = hash;
+      } catch { /* file doesn't exist */ }
+    }, 30000);
+  }
+
+  _simpleHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return String(hash);
+  }
+
+  async _processLineupChange(text) {
+    const ttsService = require('./TtsService');
+
+    // Generate TTS
+    const { filepath, duration } = await ttsService.generate(text);
+    const filename = path.basename(filepath);
+    const destPath = path.join(config.announcementsDir, filename);
+    fs.copyFileSync(filepath, destPath);
+
+    // Find or update existing lineup announcement
+    const existing = getDb().prepare("SELECT * FROM announcements WHERE name LIKE 'Sklad meczowy%' ORDER BY id DESC LIMIT 1").get();
+    let announcementId;
+
+    if (existing) {
+      // Update existing
+      getDb().prepare('UPDATE announcements SET filepath = ?, tts_text = ?, duration = ? WHERE id = ?')
+        .run(destPath, text, duration, existing.id);
+      announcementId = existing.id;
+      console.log(`Updated lineup announcement #${announcementId}`);
+    } else {
+      // Create new
+      const announcement = announcementService.createAnnouncement({
+        name: 'Sklad meczowy',
+        type: 'tts',
+        filepath: destPath,
+        tts_text: text,
+        tts_engine: 'google',
+        duration,
+      });
+      announcementId = announcement.id;
+
+      // Auto-schedule: before_match 60 min, repeat every 10 min
+      announcementService.createScheduledAnnouncement({
+        announcement_id: announcementId,
+        trigger_type: 'before_match',
+        trigger_value: '60',
+        days_of_week: [0, 1, 2, 3, 4, 5, 6],
+        is_active: true,
+        play_mode: 'interrupt',
+        repeat_interval: 10,
+      });
+      console.log(`Created lineup announcement #${announcementId} with before_match schedule`);
     }
   }
 

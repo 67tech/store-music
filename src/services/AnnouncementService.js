@@ -47,9 +47,9 @@ class AnnouncementService {
     `).all();
   }
 
-  createScheduledAnnouncement({ announcement_id, trigger_type, trigger_value, days_of_week, is_active, volume_override, play_mode }) {
+  createScheduledAnnouncement({ announcement_id, trigger_type, trigger_value, days_of_week, is_active, volume_override, play_mode, repeat_interval, repeat_until }) {
     const result = getDb().prepare(
-      'INSERT INTO scheduled_announcements (announcement_id, trigger_type, trigger_value, days_of_week, is_active, volume_override, play_mode) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO scheduled_announcements (announcement_id, trigger_type, trigger_value, days_of_week, is_active, volume_override, play_mode, repeat_interval, repeat_until) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).run(
       announcement_id,
       trigger_type,
@@ -57,7 +57,9 @@ class AnnouncementService {
       JSON.stringify(days_of_week || [1, 2, 3, 4, 5]),
       is_active !== undefined ? (is_active ? 1 : 0) : 1,
       volume_override || null,
-      play_mode || 'interrupt'
+      play_mode || 'interrupt',
+      repeat_interval || 0,
+      repeat_until || null
     );
     return getDb().prepare('SELECT * FROM scheduled_announcements WHERE id = ?').get(result.lastInsertRowid);
   }

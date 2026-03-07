@@ -11,6 +11,12 @@ const { requireAuth, requirePermission } = require('./src/middleware/auth');
 const playerService = require('./src/services/PlayerService');
 const schedulerService = require('./src/services/SchedulerService');
 
+// Ensure data directories exist
+const fs = require('fs');
+for (const dir of [config.dataDir, config.audioDir, config.announcementsDir, config.uploadsDir, config.ttsCacheDir]) {
+  fs.mkdirSync(dir, { recursive: true });
+}
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });

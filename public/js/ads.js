@@ -121,6 +121,7 @@ function showAdTts() {
     <div class="sm-form-row" style="display:flex;gap:8px;">
       <label style="flex:1;">Silnik TTS:
         <select id="ad-tts-engine" class="sm-input" onchange="adTtsEngineChange()">
+          <option value="elevenlabs">ElevenLabs (premium)</option>
           <option value="google">Google TTS</option>
           <option value="edge">Microsoft Edge TTS</option>
         </select>
@@ -174,15 +175,38 @@ function showAdTts() {
       </div>
     </div>
     <div id="ad-tts-error" style="color:#dc2626;font-size:0.85rem;margin:8px 0;"></div>
-    <button onclick="submitAdTts()" class="sm-btn sm-btn--primary">Generuj i dodaj reklame</button>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button id="ad-tts-preview" class="sm-btn" onclick="previewTtsFromForm('ad')">&#128266; Podsluchaj</button>
+      <button onclick="submitAdTts()" class="sm-btn sm-btn--primary">Generuj i dodaj reklame</button>
+    </div>
   `;
   modal.classList.add('sm-modal--open');
+  adTtsEngineChange();
 }
 
 function adTtsEngineChange() {
   const engine = document.getElementById('ad-tts-engine').value;
   const voiceRow = document.getElementById('ad-tts-voice-row');
+  const langRow = document.getElementById('ad-tts-lang')?.closest('.sm-form-row') || document.getElementById('ad-tts-lang')?.parentElement?.parentElement;
+  const elRow = document.getElementById('ad-tts-el-voice-row');
+
   voiceRow.style.display = engine === 'edge' ? '' : 'none';
+
+  if (engine === 'elevenlabs') {
+    if (!elRow) {
+      const div = document.createElement('div');
+      div.className = 'sm-form-row';
+      div.id = 'ad-tts-el-voice-row';
+      div.innerHTML = `<label>Glos ElevenLabs: <select id="ad-tts-el-voice" class="sm-input" style="max-width:250px;"><option value="">Ladowanie glosow...</option></select></label>`;
+      voiceRow.parentNode.insertBefore(div, voiceRow.nextSibling);
+      _loadAdElVoices();
+    } else {
+      elRow.style.display = '';
+    }
+  } else if (elRow) {
+    elRow.style.display = 'none';
+  }
+
   if (engine === 'edge') {
     API.get('/announcements/tts/voices').then(voices => {
       const sel = document.getElementById('ad-tts-voice');
@@ -190,6 +214,42 @@ function adTtsEngineChange() {
         `<option value="${v.id}">${v.id} (${v.gender})</option>`
       ).join('');
     }).catch(() => {});
+  }
+}
+
+async function _loadAdElVoices() {
+  const select = document.getElementById('ad-tts-el-voice');
+  if (!select) return;
+  try {
+    const voices = await API.get('/announcements/tts/elevenlabs/voices');
+    if (voices.length === 0) {
+      select.innerHTML = '<option value="">Brak glosow — sprawdz klucz API</option>';
+      return;
+    }
+    const premade = voices.filter(v => v.category === 'premade' || v.category === 'cloned');
+    const library = voices.filter(v => v.category !== 'premade' && v.category !== 'cloned');
+    let html = '';
+    if (premade.length > 0) {
+      html += '<optgroup label="Dostepne (wbudowane + sklonowane)">';
+      html += premade.map(v => {
+        const lang = v.labels?.language || '';
+        const accent = v.labels?.accent || '';
+        const tag = [lang, accent].filter(Boolean).join(', ');
+        return `<option value="${v.id}">${esc(v.name)}${tag ? ` (${tag})` : ''}</option>`;
+      }).join('');
+      html += '</optgroup>';
+    }
+    if (library.length > 0) {
+      html += '<optgroup label="Biblioteka (wymaga platnego planu)">';
+      html += library.map(v => {
+        const lang = v.labels?.language || '';
+        return `<option value="${v.id}">${esc(v.name)}${lang ? ` (${lang})` : ''} [platny]</option>`;
+      }).join('');
+      html += '</optgroup>';
+    }
+    select.innerHTML = html || '<option value="">Brak glosow</option>';
+  } catch {
+    select.innerHTML = '<option value="">Blad — sprawdz klucz API w Ustawieniach</option>';
   }
 }
 
@@ -216,7 +276,9 @@ async function submitAdTts() {
       text,
       engine: document.getElementById('ad-tts-engine').value,
       language: document.getElementById('ad-tts-lang').value,
-      voice: document.getElementById('ad-tts-voice')?.value,
+      voice: document.getElementById('ad-tts-engine').value === 'elevenlabs'
+        ? document.getElementById('ad-tts-el-voice')?.value
+        : document.getElementById('ad-tts-voice')?.value,
       schedule_mode: document.getElementById('ad-tts-mode').value,
       daily_target: parseInt(document.getElementById('ad-tts-daily').value),
       interval_minutes: parseInt(document.getElementById('ad-tts-interval').value),

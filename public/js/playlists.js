@@ -28,6 +28,15 @@ async function toggleLoop() {
   } catch {}
 }
 
+async function toggleShuffle() {
+  const btn = document.getElementById('btn-shuffle-toggle');
+  const isOn = btn.classList.contains('sm-btn--loop-on');
+  try {
+    await API.post('/player/shuffle', { shuffle: !isOn });
+    btn.classList.toggle('sm-btn--loop-on', !isOn);
+  } catch {}
+}
+
 // Called from app.js when Socket.IO playerState arrives
 let _lastPlayerStatePlaylistId = null;
 let _lastPlayerState = null;
@@ -62,6 +71,14 @@ function onPlayerStateUpdate(state) {
     const isOn = loopBtn.classList.contains('sm-btn--loop-on');
     if (isOn !== state.loop) {
       loopBtn.classList.toggle('sm-btn--loop-on', state.loop);
+    }
+  }
+  // Sync shuffle button
+  const shuffleBtn = document.getElementById('btn-shuffle-toggle');
+  if (shuffleBtn && state.shuffle !== undefined) {
+    const isOn = shuffleBtn.classList.contains('sm-btn--loop-on');
+    if (isOn !== state.shuffle) {
+      shuffleBtn.classList.toggle('sm-btn--loop-on', state.shuffle);
     }
   }
 }
@@ -492,13 +509,14 @@ function showTtsForm(position) {
     </div>
     <div class="sm-form-row"><label>Silnik:
       <select id="ins-tts-engine" onchange="onTtsEngineChange()">
+        <option value="elevenlabs">ElevenLabs (premium)</option>
         <option value="edge">Edge TTS (najlepsze głosy)</option>
         <option value="google">Google TTS</option>
         <option value="piper">Piper (offline)</option>
       </select>
     </label></div>
-    <div class="sm-form-row" id="ins-tts-voice-row">
-      <label>Głos:
+    <div class="sm-form-row" id="ins-tts-voice-row" style="display:none;">
+      <label>Głos Edge:
         <select id="ins-tts-voice">
           <optgroup label="Polski">
             <option value="pl-PL-ZofiaNeural" selected>Zofia (kobieta, PL)</option>
@@ -528,6 +546,7 @@ function showTtsForm(position) {
     <div id="ins-error" style="color:var(--sm-danger);font-size:0.85rem;margin-top:8px;"></div>
     <button id="ins-tts-btn" class="sm-btn sm-btn--primary">Generuj i dodaj do kolejki</button>
   `;
+  onTtsEngineChange();
 
   document.getElementById('ins-tts-btn').onclick = async () => {
     const text = document.getElementById('ins-tts-text').value.trim();
@@ -545,8 +564,9 @@ function showTtsForm(position) {
         name: document.getElementById('ins-tts-name').value || text.substring(0, 50),
         text,
         engine,
-        language: engine !== 'edge' ? document.getElementById('ins-tts-lang').value : undefined,
-        voice: engine === 'edge' ? document.getElementById('ins-tts-voice').value : undefined,
+        language: (engine === 'google' || engine === 'piper') ? document.getElementById('ins-tts-lang').value : undefined,
+        voice: engine === 'edge' ? document.getElementById('ins-tts-voice')?.value :
+               engine === 'elevenlabs' ? document.getElementById('ins-el-voice')?.value : undefined,
       });
 
       if (announcement && announcement.id) {
@@ -565,11 +585,78 @@ function showTtsForm(position) {
 }
 
 function onTtsEngineChange() {
-  const engine = document.getElementById('ins-tts-engine').value;
+  // Support both id prefixes (ins-tts-engine from playlists, tts-engine from announcements)
+  const engineEl = document.getElementById('ins-tts-engine') || document.getElementById('tts-engine');
+  if (!engineEl) return;
+  const engine = engineEl.value;
   const voiceRow = document.getElementById('ins-tts-voice-row');
   const langRow = document.getElementById('ins-tts-lang-row');
+  const elRow = document.getElementById('ins-el-voice-row');
+
   if (voiceRow) voiceRow.style.display = engine === 'edge' ? '' : 'none';
-  if (langRow) langRow.style.display = engine !== 'edge' ? '' : 'none';
+  if (langRow) langRow.style.display = (engine === 'google' || engine === 'piper') ? '' : 'none';
+
+  if (engine === 'elevenlabs') {
+    // Show or create ElevenLabs voice selector
+    if (!elRow) {
+      const container = voiceRow ? voiceRow.parentNode : engineEl.closest('.sm-form-row')?.parentNode;
+      if (container) {
+        const div = document.createElement('div');
+        div.className = 'sm-form-row';
+        div.id = 'ins-el-voice-row';
+        div.innerHTML = `<label>Glos ElevenLabs:
+          <select id="ins-el-voice" class="sm-input" style="max-width:250px;">
+            <option value="">Ladowanie glosow...</option>
+          </select>
+        </label>`;
+        const ref = voiceRow || langRow || engineEl.closest('.sm-form-row');
+        ref.parentNode.insertBefore(div, ref.nextSibling);
+        _loadElVoicesForForm();
+      }
+    } else {
+      elRow.style.display = '';
+    }
+  } else if (elRow) {
+    elRow.style.display = 'none';
+  }
+}
+
+async function _loadElVoicesForForm() {
+  const select = document.getElementById('ins-el-voice');
+  if (!select) return;
+  try {
+    const voices = await API.get('/announcements/tts/elevenlabs/voices');
+    if (voices.length === 0) {
+      select.innerHTML = '<option value="">Brak glosow — sprawdz klucz API</option>';
+      return;
+    }
+    // Separate premade (free-tier compatible) from cloned/library
+    const premade = voices.filter(v => v.category === 'premade' || v.category === 'cloned');
+    const library = voices.filter(v => v.category !== 'premade' && v.category !== 'cloned');
+
+    let html = '';
+    if (premade.length > 0) {
+      html += '<optgroup label="Dostepne (wbudowane + sklonowane)">';
+      html += premade.map(v => {
+        const lang = v.labels?.language || '';
+        const accent = v.labels?.accent || '';
+        const tag = [lang, accent].filter(Boolean).join(', ');
+        return `<option value="${v.id}">${esc(v.name)}${tag ? ` (${tag})` : ''}</option>`;
+      }).join('');
+      html += '</optgroup>';
+    }
+    if (library.length > 0) {
+      html += '<optgroup label="Biblioteka (wymaga platnego planu)">';
+      html += library.map(v => {
+        const lang = v.labels?.language || '';
+        return `<option value="${v.id}">${esc(v.name)}${lang ? ` (${lang})` : ''} [platny]</option>`;
+      }).join('');
+      html += '</optgroup>';
+    }
+    select.innerHTML = html || '<option value="">Brak glosow</option>';
+  } catch {
+    select.innerHTML = '<option value="">Blad — sprawdz klucz API w Ustawieniach</option>';
+  }
 }
 
 async function clearCurrentPlaylist() {
@@ -662,8 +749,10 @@ async function loadPlaylists() {
         <span class="sm-track-count">${pl.trackCount} utworów</span>
       </div>
       <div class="sm-playlist-actions">
-        <button onclick="playPlaylist(${pl.id})" class="sm-btn sm-btn--play" title="Odtwórz">&#9654;</button>
-        <button onclick="toggleDefault(${pl.id}, ${pl.is_default ? 0 : 1})" class="sm-btn sm-btn--small" title="Ustaw jako domyślną">&#9733;</button>
+        <button onclick="playPlaylist(${pl.id})" class="sm-btn sm-btn--play-big" title="Odtwórz">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+        </button>
+        <button onclick="toggleDefault(${pl.id}, ${pl.is_default ? 0 : 1})" class="sm-btn sm-btn--default-star ${pl.is_default ? 'is-default' : ''}" title="${pl.is_default ? 'Domyślna playlista' : 'Ustaw jako domyślną'}">&#9733;</button>
         <button onclick="renamePlaylist(${pl.id})" class="sm-btn sm-btn--small" title="Zmień nazwę">&#9998;</button>
         <button onclick="viewPlaylist(${pl.id})" class="sm-btn sm-btn--small">Edytuj</button>
         <button onclick="deletePlaylist(${pl.id})" class="sm-btn sm-btn--danger sm-btn--small">&#10005;</button>
@@ -787,10 +876,82 @@ async function bulkDeleteAllTracks() {
 }
 
 async function createPlaylist() {
-  const name = await smPrompt('Nazwa playlisty:');
-  if (!name) return;
-  await API.post('/playlists', { name });
-  await loadPlaylists();
+  const modal = document.getElementById('modal');
+  const modalBody = document.getElementById('modal-body');
+
+  // Build playlist options for "copy from" selector
+  const playlistOpts = allPlaylists
+    .filter(p => p.trackCount > 0)
+    .map(p => `<option value="${p.id}">${esc(p.name)} (${p.trackCount} utw.)</option>`)
+    .join('');
+
+  modalBody.innerHTML = `
+    <h3 style="margin-bottom: 16px;">Nowa playlista</h3>
+    <div class="sm-form-row">
+      <label>Nazwa playlisty</label>
+      <input type="text" id="new-pl-name" placeholder="np. Piątkowe hity">
+    </div>
+    <div class="sm-form-row" style="margin-top: 12px;">
+      <label>Utwory</label>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal;">
+          <input type="radio" name="new-pl-tracks" value="empty" checked> Pusta playlista
+        </label>
+        ${playlistOpts ? `
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal;">
+          <input type="radio" name="new-pl-tracks" value="copy"> Skopiuj utwory z istniejącej playlisty
+        </label>
+        <select id="new-pl-copy-from" class="sm-select" style="margin-left: 24px; display: none;">
+          ${playlistOpts}
+        </select>
+        ` : ''}
+      </div>
+    </div>
+    <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
+      <button class="sm-btn" style="background: var(--sm-border); color: var(--sm-text);" id="new-pl-cancel">Anuluj</button>
+      <button class="sm-btn sm-btn--primary" id="new-pl-create">Utwórz</button>
+    </div>
+  `;
+
+  // Show/hide copy-from selector based on radio
+  const radios = modalBody.querySelectorAll('input[name="new-pl-tracks"]');
+  const copySelect = document.getElementById('new-pl-copy-from');
+  if (copySelect) {
+    radios.forEach(r => r.addEventListener('change', () => {
+      const checked = modalBody.querySelector('input[name="new-pl-tracks"]:checked');
+      copySelect.style.display = checked && checked.value === 'copy' ? 'block' : 'none';
+    }));
+  }
+
+  document.getElementById('new-pl-name').focus();
+  modal.classList.add('sm-modal--open');
+
+  return new Promise((resolve) => {
+    document.getElementById('new-pl-cancel').onclick = () => {
+      modal.classList.remove('sm-modal--open');
+      resolve();
+    };
+    document.getElementById('new-pl-create').onclick = async () => {
+      const name = document.getElementById('new-pl-name').value.trim();
+      if (!name) {
+        document.getElementById('new-pl-name').style.borderColor = 'red';
+        document.getElementById('new-pl-name').focus();
+        return;
+      }
+      const mode = modalBody.querySelector('input[name="new-pl-tracks"]:checked')?.value;
+      const body = { name };
+      if (mode === 'copy' && copySelect) {
+        body.copyFromPlaylistId = parseInt(copySelect.value);
+      }
+      modal.classList.remove('sm-modal--open');
+      await API.post('/playlists', body);
+      await loadPlaylists();
+      resolve();
+    };
+    document.getElementById('new-pl-name').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('new-pl-create').click();
+    });
+  });
 }
 
 async function playSelectedPlaylist() {

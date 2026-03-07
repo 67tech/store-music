@@ -81,13 +81,14 @@ router.put('/:id', requirePermission('announcement_manage'), async (req, res) =>
     if (req.body.tts_text !== undefined && announcement.type === 'tts') {
       const engine = req.body.tts_engine || announcement.tts_engine || 'google';
       const language = req.body.tts_language || 'pl';
+      const voice = req.body.tts_voice;
 
       // Delete old file
       if (announcement.filepath) {
         try { fs.unlinkSync(announcement.filepath); } catch {}
       }
 
-      const { filepath, duration } = await ttsService.generate(req.body.tts_text, engine, language);
+      const { filepath, duration } = await ttsService.generate(req.body.tts_text, engine, language, voice);
       const filename = path.basename(filepath);
       const destPath = path.join(config.announcementsDir, filename);
       fs.copyFileSync(filepath, destPath);
@@ -118,7 +119,53 @@ router.delete('/:id', requirePermission('announcement_manage'), (req, res) => {
   res.json({ success: true });
 });
 
-// Preview (play now)
+// Get upcoming scheduled announcements for today
+router.get('/upcoming', (req, res) => {
+  res.json(announcementService.getUpcomingAnnouncements());
+});
+
+// Preview TTS (generate and stream to browser, no mpv involved)
+router.post('/tts/preview', requirePermission('announcement_manage'), async (req, res) => {
+  try {
+    const { text, engine, language, voice } = req.body;
+    if (!text) return res.status(400).json({ error: 'text required' });
+
+    const { filepath } = await ttsService.generate(text, engine, language, voice);
+
+    // Stream the generated file to browser
+    const stat = fs.statSync(filepath);
+    res.writeHead(200, {
+      'Content-Length': stat.size,
+      'Content-Type': 'audio/mpeg',
+      'Content-Disposition': 'inline',
+    });
+    fs.createReadStream(filepath).pipe(res);
+  } catch (err) {
+    console.error('TTS preview error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get available Edge TTS voices
+router.get('/tts/voices', async (req, res) => {
+  const voices = await ttsService.getEdgeVoices();
+  res.json(voices);
+});
+
+// Get available ElevenLabs voices
+router.get('/tts/elevenlabs/voices', async (req, res) => {
+  try {
+    const settings = playlistService.getSettings();
+    const apiKey = settings.elevenlabsApiKey;
+    if (!apiKey) return res.json([]);
+    const voices = await ttsService.getElevenLabsVoices(apiKey);
+    res.json(voices);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Preview (play now) — must be after /tts/* routes to avoid /:id matching "tts"
 router.post('/:id/preview', requirePermission('announcement_play'), async (req, res) => {
   try {
     await announcementService.playNow(parseInt(req.params.id));
@@ -126,17 +173,6 @@ router.post('/:id/preview', requirePermission('announcement_play'), async (req, 
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
-
-// Get upcoming scheduled announcements for today
-router.get('/upcoming', (req, res) => {
-  res.json(announcementService.getUpcomingAnnouncements());
-});
-
-// Get available Edge TTS voices
-router.get('/tts/voices', async (req, res) => {
-  const voices = await ttsService.getEdgeVoices();
-  res.json(voices);
 });
 
 // Convert announcement to track (for adding to playlist queue)

@@ -208,6 +208,18 @@ function initSchema() {
     }
   }
 
+  // Playlist calendar — assign playlists to specific dates
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS playlist_calendar (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL UNIQUE,
+      playlist_id INTEGER NOT NULL,
+      label TEXT DEFAULT '',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
+    )
+  `);
+
   // Playback history table
   db.exec(`
     CREATE TABLE IF NOT EXISTS playback_history (
@@ -255,6 +267,27 @@ function initSchema() {
     getDb().prepare('SELECT play_mode FROM scheduled_announcements LIMIT 1').get();
   } catch {
     getDb().exec("ALTER TABLE scheduled_announcements ADD COLUMN play_mode TEXT NOT NULL DEFAULT 'interrupt'");
+  }
+
+  // Migration: add match_time to store_hours_exceptions
+  try {
+    db.prepare('SELECT match_time FROM store_hours_exceptions LIMIT 1').get();
+  } catch {
+    db.exec("ALTER TABLE store_hours_exceptions ADD COLUMN match_time TEXT DEFAULT NULL");
+  }
+
+  // Migration: add repeat_interval to scheduled_announcements
+  try {
+    db.prepare('SELECT repeat_interval FROM scheduled_announcements LIMIT 1').get();
+  } catch {
+    db.exec("ALTER TABLE scheduled_announcements ADD COLUMN repeat_interval INTEGER DEFAULT 0");
+  }
+
+  // Migration: add repeat_until to scheduled_announcements (absolute time like "18:00" or empty = until match/close)
+  try {
+    db.prepare('SELECT repeat_until FROM scheduled_announcements LIMIT 1').get();
+  } catch {
+    db.exec("ALTER TABLE scheduled_announcements ADD COLUMN repeat_until TEXT DEFAULT NULL");
   }
 
   // Migration: add one_shot column to playlist_tracks

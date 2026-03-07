@@ -26,6 +26,11 @@ router.post('/loop', requirePermission('player_control'), (req, res) => {
   res.json(playerService.getState());
 });
 
+router.post('/shuffle', requirePermission('player_control'), (req, res) => {
+  playerService.setShuffle(req.body.shuffle !== false);
+  res.json(playerService.getState());
+});
+
 router.post('/pause', requirePermission('player_control'), async (req, res) => {
   await playerService.pause();
   res.json(playerService.getState());

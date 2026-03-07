@@ -106,7 +106,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initRadio();
   initYoutube();
   initAds();
+  initCalendar();
   initHistory();
+  loadSettings(); // Settings tab — loads playback + TTS config
 
   // Horizontal timeline + current playlist: update from Socket.IO player state (real-time)
   // Use RAF throttle to prevent multiple updates per frame (reduces blinking)
@@ -167,10 +169,13 @@ async function loadUserInfo() {
 }
 
 function applyPermissions() {
-  // Hide users tab if no user_manage permission
   const usersTab = document.getElementById('nav-users');
   if (usersTab && !currentUserPerms.user_manage) {
     usersTab.style.display = 'none';
+  }
+  const settingsTab = document.getElementById('nav-settings');
+  if (settingsTab && !currentUserPerms.settings_manage) {
+    settingsTab.style.display = 'none';
   }
 }
 

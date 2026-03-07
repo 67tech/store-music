@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Store Music Manager</title>
-  <link rel="stylesheet" href="/css/style.css?v=20260307u">
+  <link rel="stylesheet" href="/css/style.css?v=20260307z4">
 </head>
 <body>
   <div class="sm-app">
@@ -87,6 +87,10 @@
         <span class="sm-nav-icon">&#9654;&#65039;</span>
         <span class="sm-nav-label">YouTube</span>
       </button>
+      <button class="sm-nav-tab" data-tab="calendar">
+        <span class="sm-nav-icon">&#128197;</span>
+        <span class="sm-nav-label">Kalendarz</span>
+      </button>
       <button class="sm-nav-tab" data-tab="ads">
         <span class="sm-nav-icon">&#128226;</span>
         <span class="sm-nav-label">Reklamy</span>
@@ -94,6 +98,10 @@
       <button class="sm-nav-tab" data-tab="history">
         <span class="sm-nav-icon">&#128214;</span>
         <span class="sm-nav-label">Historia</span>
+      </button>
+      <button class="sm-nav-tab" data-tab="settings" id="nav-settings">
+        <span class="sm-nav-icon">&#9881;</span>
+        <span class="sm-nav-label">Ustawienia</span>
       </button>
       <button class="sm-nav-tab" data-tab="users" id="nav-users">
         <span class="sm-nav-icon">&#128101;</span>
@@ -110,12 +118,18 @@
           <div class="sm-grid-main">
             <div class="sm-section-header">
               <h2>Obecna playlista</h2>
-              <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-                <select id="playlist-selector" class="sm-input" style="min-width: 140px; max-width: 200px;"></select>
-                <button onclick="playSelectedPlaylist()" class="sm-btn sm-btn--play sm-btn--small" title="Odtwórz wybraną playlistę">&#9654;</button>
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <select id="playlist-selector" class="sm-input sm-select--prominent"></select>
+                <button onclick="playSelectedPlaylist()" class="sm-btn sm-btn--play-big" title="Odtwórz wybraną playlistę">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+                  Odtwórz
+                </button>
                 <button onclick="addAllTracksToPlaylist()" class="sm-btn sm-btn--small" title="Dodaj wszystkie utwory do playlisty">+ Wszystkie</button>
                 <button id="btn-loop-toggle" class="sm-btn sm-btn--small sm-btn--loop sm-btn--loop-on" onclick="toggleLoop()" title="Zapętlenie playlisty">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                </button>
+                <button id="btn-shuffle-toggle" class="sm-btn sm-btn--small sm-btn--loop" onclick="toggleShuffle()" title="Losowa kolejność">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
                 </button>
                 <button onclick="clearCurrentPlaylist()" class="sm-btn sm-btn--danger sm-btn--small" title="Wyczysc playlistę">&#128465;</button>
                 <button id="btn-create-playlist" class="sm-btn sm-btn--small">+ Nowa</button>
@@ -129,11 +143,17 @@
           </div>
           <div class="sm-grid-side">
             <div class="sm-card sm-card--sticky">
-              <div class="sm-card-header"><h3>Zaplanowane reklamy</h3></div>
+              <div class="sm-card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                <h3>Zaplanowane reklamy</h3>
+                <button onclick="loadScheduledAdsPanel()" class="sm-btn sm-btn--small" title="Odśwież">&#8635;</button>
+              </div>
               <div id="scheduled-ads-panel"></div>
             </div>
             <div class="sm-card sm-card--sticky" style="margin-top: 12px;">
-              <div class="sm-card-header"><h3>Zaplanowane komunikaty</h3></div>
+              <div class="sm-card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                <h3>Zaplanowane komunikaty</h3>
+                <button onclick="loadScheduledAnnouncementsPanel()" class="sm-btn sm-btn--small" title="Odśwież">&#8635;</button>
+              </div>
               <div id="scheduled-announcements-panel"></div>
             </div>
           </div>
@@ -174,28 +194,6 @@
               <div id="matchday-section"></div>
             </div>
 
-            <div class="sm-card sm-card--collapsed" id="card-settings">
-              <div class="sm-card-header sm-card-header--toggle" onclick="toggleCard('card-settings')">
-                <h3>Ustawienia</h3>
-                <span class="sm-card-toggle">&#9660;</span>
-              </div>
-              <div class="sm-card-body">
-                <div id="app-settings"></div>
-              </div>
-            </div>
-
-            <div class="sm-card sm-card--collapsed" id="card-serwis">
-              <div class="sm-card-header sm-card-header--toggle" onclick="toggleCard('card-serwis')">
-                <h3>Serwis</h3>
-                <span class="sm-card-toggle">&#9660;</span>
-              </div>
-              <div class="sm-card-body">
-                <div style="display: flex; gap: 8px; flex-wrap: wrap; padding: 8px 0;">
-                  <button onclick="restartPlayer()" class="sm-btn sm-btn--small">Restart playera</button>
-                  <button onclick="restartServer()" class="sm-btn sm-btn--danger sm-btn--small">Restart serwera</button>
-                </div>
-              </div>
-            </div>
           </div>
 
           <div class="sm-grid-side">
@@ -269,6 +267,29 @@
         </div>
       </div>
 
+      <!-- Calendar -->
+      <div id="section-calendar" class="sm-section">
+        <div class="sm-grid">
+          <div class="sm-grid-main">
+            <div class="sm-card">
+              <div class="sm-card-header">
+                <h2>Kalendarz playlist</h2>
+                <p class="sm-text-muted" style="margin:0;font-size:0.85rem;">Przypisz playlisty do konkretnych dni. W dni bez przypisania gra domyslna playlista.</p>
+              </div>
+              <div id="calendar-grid"></div>
+            </div>
+          </div>
+          <div class="sm-grid-side">
+            <div id="calendar-date-panel">
+              <div class="sm-card sm-card--sticky">
+                <div class="sm-card-header"><h3>Wybierz dzien</h3></div>
+                <p class="sm-text-muted" style="padding:12px;">Kliknij dzien w kalendarzu, aby przypisac playlistę, dodac komunikaty lub reklamy.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Ads -->
       <div id="section-ads" class="sm-section">
         <div class="sm-grid">
@@ -328,6 +349,38 @@
         </div>
       </div>
 
+      <!-- Settings -->
+      <div id="section-settings" class="sm-section">
+        <div class="sm-grid">
+          <div class="sm-grid-main">
+            <div class="sm-card">
+              <div class="sm-card-header"><h2>Odtwarzanie</h2></div>
+              <div id="app-settings" style="padding: 0 16px 16px;"></div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-header"><h2>TTS (Text-to-Speech)</h2></div>
+              <div id="tts-settings" style="padding: 0 16px 16px;"></div>
+            </div>
+          </div>
+          <div class="sm-grid-side">
+            <div class="sm-card sm-card--sticky">
+              <div class="sm-card-header"><h3>Serwis</h3></div>
+              <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+                <button onclick="restartPlayer()" class="sm-btn sm-btn--small" style="width:100%;">Restart playera (mpv)</button>
+                <button onclick="restartServer()" class="sm-btn sm-btn--danger sm-btn--small" style="width:100%;">Restart serwera</button>
+                <p class="sm-text-muted" style="font-size:0.8rem;margin:4px 0 0;">Restart playera przeladowuje silnik mpv. Restart serwera zatrzyma odtwarzanie.</p>
+              </div>
+            </div>
+
+            <div class="sm-card sm-card--sticky" style="margin-top:12px;">
+              <div class="sm-card-header"><h3>Info</h3></div>
+              <div id="settings-info" style="padding: 12px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Users -->
       <div id="section-users" class="sm-section">
         <div class="sm-grid">
@@ -366,16 +419,17 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/api.js?v=20260307u"></script>
-  <script src="/js/player.js?v=20260307u"></script>
-  <script src="/js/playlists.js?v=20260307u"></script>
-  <script src="/js/schedule.js?v=20260307u"></script>
-  <script src="/js/announcements.js?v=20260307u"></script>
-  <script src="/js/users.js?v=20260307u"></script>
-  <script src="/js/radio.js?v=20260307u"></script>
-  <script src="/js/youtube.js?v=20260307u"></script>
-  <script src="/js/ads.js?v=20260307u"></script>
-  <script src="/js/history.js?v=20260307u"></script>
-  <script src="/js/app.js?v=20260307u"></script>
+  <script src="/js/api.js?v=20260307z4"></script>
+  <script src="/js/player.js?v=20260307z4"></script>
+  <script src="/js/playlists.js?v=20260307z4"></script>
+  <script src="/js/schedule.js?v=20260307z4"></script>
+  <script src="/js/announcements.js?v=20260307z4"></script>
+  <script src="/js/users.js?v=20260307z4"></script>
+  <script src="/js/radio.js?v=20260307z4"></script>
+  <script src="/js/youtube.js?v=20260307z4"></script>
+  <script src="/js/calendar.js?v=20260307z4"></script>
+  <script src="/js/ads.js?v=20260307z4"></script>
+  <script src="/js/history.js?v=20260307z4"></script>
+  <script src="/js/app.js?v=20260307z4"></script>
 </body>
 </html>
