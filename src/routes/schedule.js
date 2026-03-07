@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer');
 const { getDb } = require('../db');
 const schedulerService = require('../services/SchedulerService');
 const playlistService = require('../services/PlaylistService');
@@ -9,6 +10,18 @@ const announcementService = require('../services/AnnouncementService');
 const ttsService = require('../services/TtsService');
 const config = require('../config');
 const { requirePermission } = require('../middleware/auth');
+
+const logoUpload = multer({
+  storage: multer.diskStorage({
+    destination: config.dataDir,
+    filename: (req, file, cb) => cb(null, 'logo' + path.extname(file.originalname).toLowerCase()),
+  }),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (/^image\/(png|jpeg|jpg|svg\+xml|webp|gif)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Dozwolone formaty: PNG, JPG, SVG, WebP, GIF'));
+  },
+});
 
 // Get weekly hours
 router.get('/hours', (req, res) => {
@@ -182,6 +195,30 @@ router.get('/settings', (req, res) => {
 
 router.put('/settings', requirePermission('settings_manage'), (req, res) => {
   res.json(playlistService.updateSettings(req.body));
+});
+
+// --- Logo ---
+router.post('/logo', requirePermission('settings_manage'), logoUpload.single('logo'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  playlistService.updateSettings({ logoFile: req.file.filename });
+  res.json({ success: true, filename: req.file.filename });
+});
+
+router.delete('/logo', requirePermission('settings_manage'), (req, res) => {
+  const settings = playlistService.getSettings();
+  if (settings.logoFile) {
+    try { fs.unlinkSync(path.join(config.dataDir, settings.logoFile)); } catch {}
+  }
+  playlistService.updateSettings({ logoFile: '' });
+  res.json({ success: true });
+});
+
+router.get('/logo/image', (req, res) => {
+  const settings = playlistService.getSettings();
+  if (!settings.logoFile) return res.status(404).json({ error: 'No logo' });
+  const logoPath = path.join(config.dataDir, settings.logoFile);
+  if (!fs.existsSync(logoPath)) return res.status(404).json({ error: 'File not found' });
+  res.sendFile(logoPath);
 });
 
 // --- Matchday Lineup ---

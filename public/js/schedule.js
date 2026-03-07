@@ -202,6 +202,24 @@ async function deleteException(id) {
 async function loadSettings() {
   const settings = await API.get('/schedule/settings');
 
+  // Store name in header
+  if (settings.storeName) {
+    const titleEl = document.getElementById('app-title');
+    if (titleEl) titleEl.textContent = settings.storeName;
+    document.title = settings.storeName + ' — Store Music';
+  }
+
+  // Logo in header
+  const logoEl = document.getElementById('app-logo');
+  if (logoEl) {
+    if (settings.logoFile) {
+      logoEl.src = '/api/schedule/logo/image?t=' + Date.now();
+      logoEl.style.display = '';
+    } else {
+      logoEl.style.display = 'none';
+    }
+  }
+
   // Playback settings
   const playbackContainer = document.getElementById('app-settings');
   if (playbackContainer) {
@@ -270,6 +288,15 @@ async function loadSettings() {
     const calToday = await API.get('/schedule/calendar/today').catch(() => null);
     infoContainer.innerHTML = `
       <div style="font-size:0.85rem;">
+        <div style="margin-bottom:6px;"><strong>Nazwa:</strong> ${esc(settings.storeName || 'Store Music')}</div>
+        <div style="margin-bottom:8px;">
+          <strong>Logo:</strong>
+          ${settings.logoFile
+            ? '<img src="/api/schedule/logo/image?t=' + Date.now() + '" style="height:24px;vertical-align:middle;margin:0 8px;border-radius:3px;"><button onclick="settingsRemoveLogo()" class="sm-btn sm-btn--danger sm-btn--small" style="font-size:0.75rem;">Usun</button>'
+            : '<em>brak</em>'}
+          <div style="margin-top:4px;"><input type="file" id="settings-logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif" style="font-size:0.8rem;">
+          <button onclick="settingsUploadLogo()" class="sm-btn sm-btn--small" style="font-size:0.75rem;margin-top:4px;">Wgraj logo</button></div>
+        </div>
         <div style="margin-bottom:6px;"><strong>Domyslna playlista:</strong> ${defaultPl ? esc(defaultPl.name) : '<em>brak</em>'}</div>
         <div style="margin-bottom:6px;"><strong>Playlista na dzis:</strong> ${calToday ? esc(calToday.playlist_name) : '<em>domyslna</em>'}</div>
         <div style="margin-bottom:6px;"><strong>Crossfade:</strong> ${(settings.crossfadeDurationMs || 0) > 0 ? (settings.crossfadeDurationMs / 1000) + 's' : 'wylaczony'}</div>
@@ -277,6 +304,21 @@ async function loadSettings() {
       </div>
     `;
   }
+}
+
+async function settingsUploadLogo() {
+  const input = document.getElementById('settings-logo-file');
+  if (!input || !input.files || !input.files[0]) return smAlert('Wybierz plik');
+  const form = new FormData();
+  form.append('logo', input.files[0]);
+  const res = await fetch('/api/schedule/logo', { method: 'POST', body: form });
+  if (!res.ok) return smAlert('Blad wgrywania logo');
+  await loadSettings();
+}
+
+async function settingsRemoveLogo() {
+  await API.del('/schedule/logo');
+  await loadSettings();
 }
 
 async function saveSettings() {

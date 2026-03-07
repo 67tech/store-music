@@ -4,14 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Store Music Manager</title>
-  <link rel="stylesheet" href="/css/style.css?v=20260308z5">
+  <link rel="stylesheet" href="/css/style.css?v=20260308z6">
 </head>
 <body>
   <div class="sm-app">
 
     <!-- ===== Top Bar ===== -->
     <div class="sm-topbar">
-      <span class="sm-logo">Store Music</span>
+      <img id="app-logo" src="" alt="" style="height:28px;display:none;margin-right:8px;">
+      <span class="sm-logo" id="app-title">Store Music</span>
       <div class="sm-topbar-right">
         <span id="user-info" class="sm-topbar-user"></span>
         <button onclick="changePassword()" class="sm-topbar-btn">Zmien haslo</button>
@@ -398,6 +399,8 @@
               <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px;">
                 <button onclick="restartPlayer()" class="sm-btn sm-btn--small" style="width:100%;">Restart playera (mpv)</button>
                 <button onclick="restartServer()" class="sm-btn sm-btn--danger sm-btn--small" style="width:100%;">Restart serwera</button>
+                <hr style="border:none;border-top:1px solid var(--sm-border);margin:8px 0;">
+                <button onclick="rerunSetupWizard()" class="sm-btn sm-btn--small" style="width:100%;">Kreator konfiguracji</button>
                 <p class="sm-text-muted" style="font-size:0.8rem;margin:4px 0 0;">Restart playera przeladowuje silnik mpv. Restart serwera zatrzyma odtwarzanie.</p>
               </div>
             </div>
@@ -415,7 +418,10 @@
         <div class="sm-card">
           <div class="sm-card-header">
             <h2>Logi operacji</h2>
-            <button onclick="exportAuditCsv()" class="sm-btn sm-btn--small">Eksport CSV</button>
+            <div style="display:flex;gap:6px;">
+              <button onclick="loadAuditLog(1)" class="sm-btn sm-btn--small">&#8635; Odswiez</button>
+              <button onclick="exportAuditCsv()" class="sm-btn sm-btn--small">Eksport CSV</button>
+            </div>
           </div>
           <div style="padding: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end;">
             <div class="sm-form-row" style="flex:1;min-width:120px;">
@@ -486,18 +492,18 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/api.js?v=20260308z5"></script>
-  <script src="/js/player.js?v=20260308z5"></script>
-  <script src="/js/playlists.js?v=20260308z5"></script>
-  <script src="/js/schedule.js?v=20260308z5"></script>
-  <script src="/js/announcements.js?v=20260308z5"></script>
-  <script src="/js/users.js?v=20260308z5"></script>
-  <script src="/js/radio.js?v=20260308z5"></script>
-  <script src="/js/youtube.js?v=20260308z5"></script>
-  <script src="/js/calendar.js?v=20260308z5"></script>
-  <script src="/js/ads.js?v=20260308z5"></script>
-  <script src="/js/history.js?v=20260308z5"></script>
-  <script src="/js/audit.js?v=20260308z5"></script>
-  <script src="/js/app.js?v=20260308z5"></script>
+  <script src="/js/api.js?v=20260308z6"></script>
+  <script src="/js/player.js?v=20260308z6"></script>
+  <script src="/js/playlists.js?v=20260308z6"></script>
+  <script src="/js/schedule.js?v=20260308z6"></script>
+  <script src="/js/announcements.js?v=20260308z6"></script>
+  <script src="/js/users.js?v=20260308z6"></script>
+  <script src="/js/radio.js?v=20260308z6"></script>
+  <script src="/js/youtube.js?v=20260308z6"></script>
+  <script src="/js/calendar.js?v=20260308z6"></script>
+  <script src="/js/ads.js?v=20260308z6"></script>
+  <script src="/js/history.js?v=20260308z6"></script>
+  <script src="/js/audit.js?v=20260308z6"></script>
+  <script src="/js/app.js?v=20260308z6"></script>
 </body>
 </html>

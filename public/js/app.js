@@ -573,6 +573,11 @@ async function showSetupWizard() {
   const modal = document.getElementById('modal');
   const modalBody = document.getElementById('modal-body');
 
+  // Load current settings to pre-fill
+  let currentSettings = {};
+  try { currentSettings = await API.get('/schedule/settings'); } catch {}
+  const cs = currentSettings;
+
   modalBody.innerHTML = `
     <div id="setup-wizard">
       <h2 style="margin-bottom:4px;">Witaj w Store Music Manager!</h2>
@@ -582,7 +587,15 @@ async function showSetupWizard() {
         <div id="setup-step-1" class="setup-step">
           <h3>1. Nazwa sklepu / lokalu</h3>
           <div class="sm-form-row">
-            <input type="text" id="setup-store-name" class="sm-input" placeholder="np. Sklep Sportowy Arena">
+            <input type="text" id="setup-store-name" class="sm-input" placeholder="np. Sklep Sportowy Arena" value="${esc(cs.storeName || '')}">
+          </div>
+          <div class="sm-form-row" style="margin-top:8px;">
+            <label style="font-size:0.85rem;">Logo (opcjonalnie)</label>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:4px;">
+              <img id="setup-logo-preview" src="${cs.logoFile ? '/api/schedule/logo/image?t=' + Date.now() : ''}" alt="" style="height:32px;${cs.logoFile ? '' : 'display:none;'}border-radius:4px;">
+              <input type="file" id="setup-logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif" onchange="previewSetupLogo(this)" style="font-size:0.85rem;">
+              ${cs.logoFile ? '<button type="button" onclick="removeSetupLogo()" class="sm-btn sm-btn--danger sm-btn--small">Usun</button>' : ''}
+            </div>
           </div>
         </div>
 
@@ -702,6 +715,18 @@ async function showSetupWizard() {
               </div>
             </div>
             <div class="sm-form-row" style="margin-top:8px;">
+              <label style="font-size:0.85rem;">Zawartosc kopii</label>
+              <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                <label style="font-weight:normal;cursor:pointer;font-size:0.85rem;"><input type="checkbox" class="setup-bk-content" value="database" checked> Baza danych</label>
+                <label style="font-weight:normal;cursor:pointer;font-size:0.85rem;"><input type="checkbox" class="setup-bk-content" value="audio" checked> Pliki muzyczne</label>
+                <label style="font-weight:normal;cursor:pointer;font-size:0.85rem;"><input type="checkbox" class="setup-bk-content" value="announcements" checked> Komunikaty</label>
+                <label style="font-weight:normal;cursor:pointer;font-size:0.85rem;"><input type="checkbox" class="setup-bk-content" value="ads" checked> Reklamy</label>
+                <label style="font-weight:normal;cursor:pointer;font-size:0.85rem;"><input type="checkbox" class="setup-bk-content" value="tts_cache" checked> Cache TTS</label>
+                <label style="font-weight:normal;cursor:pointer;font-size:0.85rem;"><input type="checkbox" class="setup-bk-content" value="matchday" checked> Dane meczowe</label>
+                <label style="font-weight:normal;cursor:pointer;font-size:0.85rem;"><input type="checkbox" class="setup-bk-content" value="config" checked> Konfiguracja</label>
+              </div>
+            </div>
+            <div class="sm-form-row" style="margin-top:8px;">
               <label style="font-size:0.85rem;">Cele kopii</label>
               <div style="display:flex;gap:12px;flex-wrap:wrap;">
                 <label style="font-weight:normal;cursor:pointer;font-size:0.85rem;"><input type="checkbox" id="setup-backup-local" checked> Lokalnie</label>
@@ -780,6 +805,12 @@ async function submitSetupWizard() {
       setup_completed: true,
     });
 
+    // Upload logo if selected
+    const logoInput = document.getElementById('setup-logo-file');
+    if (logoInput && logoInput.files && logoInput.files[0]) {
+      try { await uploadLogo(logoInput); } catch (e) { console.warn('Logo upload failed:', e.message); }
+    }
+
     // Save store hours per day (API expects { hours: [{ day_of_week, open_time, close_time, is_closed }] })
     const hoursArr = [];
     for (let d = 0; d < 7; d++) {
@@ -810,6 +841,7 @@ async function submitSetupWizard() {
           backup_hour: document.getElementById('setup-backup-hour')?.value || '03:00',
           backup_keep: parseInt(document.getElementById('setup-backup-keep')?.value || '4'),
           backup_destinations: destinations.length > 0 ? destinations : ['local'],
+          backup_contents: Array.from(document.querySelectorAll('.setup-bk-content:checked')).map(cb => cb.value),
         });
       } catch (e) { console.warn('Backup settings save failed:', e.message); }
     }
@@ -883,4 +915,33 @@ async function skipSetupWizard() {
     await API.put('/schedule/settings', { setup_completed: true });
   } catch {}
   document.getElementById('modal').classList.remove('sm-modal--open');
+}
+
+function rerunSetupWizard() {
+  showSetupWizard();
+}
+
+function previewSetupLogo(input) {
+  const preview = document.getElementById('setup-logo-preview');
+  if (input.files && input.files[0]) {
+    const reader = new FileReader();
+    reader.onload = (e) => { preview.src = e.target.result; preview.style.display = ''; };
+    reader.readAsDataURL(input.files[0]);
+  }
+}
+
+async function removeSetupLogo() {
+  try { await API.del('/schedule/logo'); } catch {}
+  const preview = document.getElementById('setup-logo-preview');
+  if (preview) { preview.style.display = 'none'; preview.src = ''; }
+  const input = document.getElementById('setup-logo-file');
+  if (input) input.value = '';
+}
+
+async function uploadLogo(fileInput) {
+  if (!fileInput || !fileInput.files || !fileInput.files[0]) return;
+  const form = new FormData();
+  form.append('logo', fileInput.files[0]);
+  const res = await fetch('/api/schedule/logo', { method: 'POST', body: form });
+  if (!res.ok) throw new Error('Logo upload failed');
 }
