@@ -545,6 +545,18 @@ async function loadBackupSettings() {
           </label>
         </div>
 
+        <div class="sm-form-row"><label>Zawartosc kopii:</label>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
+            <label><input type="checkbox" class="bk-content-cb" value="database" ${(s.backup_contents || ['database','announcements','ads','tts_cache','matchday','config','audio']).includes('database') ? 'checked' : ''}> Baza danych</label>
+            <label><input type="checkbox" class="bk-content-cb" value="audio" ${(s.backup_contents || ['database','announcements','ads','tts_cache','matchday','config','audio']).includes('audio') ? 'checked' : ''}> Pliki muzyczne</label>
+            <label><input type="checkbox" class="bk-content-cb" value="announcements" ${(s.backup_contents || ['database','announcements','ads','tts_cache','matchday','config','audio']).includes('announcements') ? 'checked' : ''}> Komunikaty</label>
+            <label><input type="checkbox" class="bk-content-cb" value="ads" ${(s.backup_contents || ['database','announcements','ads','tts_cache','matchday','config','audio']).includes('ads') ? 'checked' : ''}> Reklamy</label>
+            <label><input type="checkbox" class="bk-content-cb" value="tts_cache" ${(s.backup_contents || ['database','announcements','ads','tts_cache','matchday','config','audio']).includes('tts_cache') ? 'checked' : ''}> Cache TTS</label>
+            <label><input type="checkbox" class="bk-content-cb" value="matchday" ${(s.backup_contents || ['database','announcements','ads','tts_cache','matchday','config','audio']).includes('matchday') ? 'checked' : ''}> Dane meczowe</label>
+            <label><input type="checkbox" class="bk-content-cb" value="config" ${(s.backup_contents || ['database','announcements','ads','tts_cache','matchday','config','audio']).includes('config') ? 'checked' : ''}> Konfiguracja</label>
+          </div>
+        </div>
+
         <div class="sm-form-row"><label>Cele kopii zapasowej:</label>
           <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
             <label><input type="checkbox" class="bk-dest-cb" value="local" ${(s.backup_destinations || ['local']).includes('local') ? 'checked' : ''} onchange="backupDestChange()"> Lokalnie</label>
@@ -644,6 +656,7 @@ async function saveBackupSettings() {
     backup_day: parseInt(document.getElementById('bk-day')?.value || 0),
     backup_hour: document.getElementById('bk-hour')?.value || '03:00',
     backup_keep: parseInt(document.getElementById('bk-keep')?.value || 4),
+    backup_contents: Array.from(document.querySelectorAll('.bk-content-cb:checked')).map(function(cb) { return cb.value; }),
     backup_destinations: Array.from(document.querySelectorAll('.bk-dest-cb:checked')).map(function(cb) { return cb.value; }),
     backup_ftp_host: document.getElementById('bk-ftp-host')?.value || '',
     backup_ftp_port: parseInt(document.getElementById('bk-ftp-port')?.value || 21),

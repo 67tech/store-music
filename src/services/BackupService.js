@@ -40,6 +40,8 @@ class BackupService {
       backup_email_smtp_user: s.backup_email_smtp_user || '',
       backup_email_smtp_pass: s.backup_email_smtp_pass || '',
       backup_email_smtp_secure: s.backup_email_smtp_secure || false,
+      // Contents to include
+      backup_contents: s.backup_contents || ['database', 'announcements', 'ads', 'tts_cache', 'matchday', 'config', 'audio'],
       // Last backup info
       backup_last_date: s.backup_last_date || null,
       backup_last_status: s.backup_last_status || null,
@@ -49,7 +51,7 @@ class BackupService {
 
   saveSettings(data) {
     const allowed = [
-      'backup_enabled', 'backup_day', 'backup_hour', 'backup_destinations', 'backup_keep',
+      'backup_enabled', 'backup_day', 'backup_hour', 'backup_destinations', 'backup_keep', 'backup_contents',
       'backup_ftp_host', 'backup_ftp_port', 'backup_ftp_user', 'backup_ftp_pass', 'backup_ftp_path',
       'backup_smb_share', 'backup_smb_user', 'backup_smb_pass', 'backup_smb_domain', 'backup_smb_path',
       'backup_email_to', 'backup_email_smtp_host', 'backup_email_smtp_port',
@@ -67,6 +69,10 @@ class BackupService {
   // --- Create backup archive ---
 
   async createBackup() {
+    const settings = this.getSettings();
+    const contents = settings.backup_contents || ['database', 'announcements', 'ads', 'tts_cache', 'matchday', 'config', 'audio'];
+    const has = (key) => contents.includes(key);
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const filename = `store-music-backup-${timestamp}.zip`;
     const filepath = path.join(this._backupDir, filename);
@@ -79,31 +85,49 @@ class BackupService {
       archive.on('error', reject);
       archive.pipe(output);
 
-      // Database
-      const dbPath = config.dbPath;
-      if (fs.existsSync(dbPath)) archive.file(dbPath, { name: 'store-music.db' });
+      // Database (settings, playlists, schedules, users, etc.)
+      if (has('database')) {
+        const dbPath = config.dbPath;
+        if (fs.existsSync(dbPath)) archive.file(dbPath, { name: 'store-music.db' });
+      }
 
       // Announcements (TTS + uploaded audio)
-      const annDir = config.announcementsDir;
-      if (fs.existsSync(annDir)) archive.directory(annDir, 'announcements');
+      if (has('announcements')) {
+        const annDir = config.announcementsDir;
+        if (fs.existsSync(annDir)) archive.directory(annDir, 'announcements');
+      }
+
+      // Ads audio files (uploads dir)
+      if (has('ads')) {
+        const uploadsDir = config.uploadsDir;
+        if (fs.existsSync(uploadsDir)) archive.directory(uploadsDir, 'uploads');
+      }
 
       // TTS cache
-      const ttsDir = config.ttsCacheDir;
-      if (fs.existsSync(ttsDir)) archive.directory(ttsDir, 'tts-cache');
+      if (has('tts_cache')) {
+        const ttsDir = config.ttsCacheDir;
+        if (fs.existsSync(ttsDir)) archive.directory(ttsDir, 'tts-cache');
+      }
 
-      // Uploads (ads audio etc)
-      const uploadsDir = config.uploadsDir;
-      if (fs.existsSync(uploadsDir)) archive.directory(uploadsDir, 'uploads');
+      // Music files (audio dir)
+      if (has('audio')) {
+        const audioDir = config.audioDir;
+        if (fs.existsSync(audioDir)) archive.directory(audioDir, 'audio');
+      }
 
       // Matchday data
-      const matchdayDir = path.join(config.dataDir, 'matchday');
-      if (fs.existsSync(matchdayDir)) archive.directory(matchdayDir, 'matchday');
+      if (has('matchday')) {
+        const matchdayDir = path.join(config.dataDir, 'matchday');
+        if (fs.existsSync(matchdayDir)) archive.directory(matchdayDir, 'matchday');
+      }
 
       // App config files
-      const serverJs = path.join(config.dataDir, '..', 'server.js');
-      if (fs.existsSync(serverJs)) archive.file(serverJs, { name: 'server.js' });
-      const configJs = path.join(config.dataDir, '..', 'src', 'config.js');
-      if (fs.existsSync(configJs)) archive.file(configJs, { name: 'src/config.js' });
+      if (has('config')) {
+        const serverJs = path.join(config.dataDir, '..', 'server.js');
+        if (fs.existsSync(serverJs)) archive.file(serverJs, { name: 'server.js' });
+        const configJs = path.join(config.dataDir, '..', 'src', 'config.js');
+        if (fs.existsSync(configJs)) archive.file(configJs, { name: 'src/config.js' });
+      }
 
       archive.finalize();
     });
