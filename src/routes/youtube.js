@@ -82,80 +82,29 @@ router.post('/download', requirePermission('track_upload'), async (req, res) => 
   // Download in background
   (async () => {
     try {
-      // Build yt-dlp arguments
       const args = [
         '-x', '--audio-format', 'mp3',
         '--audio-quality', '0',
         '-o', path.join(downloadDir, '%(title)s.%(ext)s'),
         '--no-playlist-reverse',
-        '--print-json',
       ];
 
       // If specific track IDs selected, use playlist-items
       if (trackIds && trackIds.length > 0) {
         args.push('--playlist-items', trackIds.join(','));
+        progress.total = trackIds.length;
       }
 
       args.push(url);
 
-      const proc = spawn('yt-dlp', args, { maxBuffer: 50 * 1024 * 1024 });
-      let buffer = '';
+      console.log('[YT] Starting download:', args.join(' '));
 
-      proc.stdout.on('data', (data) => {
-        buffer += data.toString();
-        // Try to parse complete JSON objects
-        const lines = buffer.split('\n');
-        buffer = lines.pop(); // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const info = JSON.parse(line);
-            const filepath = info._filename || info.filepath;
-            // The actual mp3 file might have a different extension after conversion
-            const mp3Path = filepath ? filepath.replace(/\.[^.]+$/, '.mp3') : null;
-            const actualPath = mp3Path && fs.existsSync(mp3Path) ? mp3Path : filepath;
-
-            if (actualPath && fs.existsSync(actualPath)) {
-              // Get duration
-              const duration = info.duration || 0;
-              const title = info.title || info.fulltitle || path.parse(actualPath).name;
-              const artist = info.artist || info.uploader || info.channel || '';
-
-              // Move file to audio dir
-              const finalFilename = `${Date.now()}-${path.basename(actualPath)}`;
-              const finalPath = path.join(config.audioDir, finalFilename);
-              fs.renameSync(actualPath, finalPath);
-
-              // Create track in DB
-              const track = playlistService.createTrack({
-                filename: path.basename(actualPath),
-                filepath: finalPath,
-                title,
-                artist,
-                duration: Math.round(duration),
-                mimetype: 'audio/mpeg',
-                filesize: fs.statSync(finalPath).size,
-              });
-
-              // Add to playlist if specified
-              if (playlistId && track) {
-                try {
-                  playlistService.addTrackToPlaylist(parseInt(playlistId), track.id);
-                } catch {}
-              }
-
-              progress.completed++;
-              progress.tracks.push({ id: track.id, title });
-            }
-          } catch {}
-        }
-      });
+      const proc = spawn('yt-dlp', args);
 
       proc.stderr.on('data', (data) => {
         const msg = data.toString();
         // Parse progress from stderr
-        const dlMatch = msg.match(/\[download\]\s+(\d+\.\d+)%/);
+        const dlMatch = msg.match(/\[download\]\s+(\d+\.?\d*)%/);
         if (dlMatch) {
           progress.currentProgress = parseFloat(dlMatch[1]);
         }
@@ -164,17 +113,76 @@ router.post('/download', requirePermission('track_upload'), async (req, res) => 
         if (totalMatch) {
           progress.total = parseInt(totalMatch[1]);
         }
+        // Log errors
+        if (msg.includes('ERROR')) {
+          console.log('[YT stderr]', msg.trim());
+          progress.errors.push(msg.trim());
+        }
       });
 
       proc.on('close', (code) => {
-        // Clean up temp dir
-        try { fs.rmdirSync(downloadDir, { recursive: true }); } catch {}
+        console.log('[YT] Process closed, code:', code);
 
-        progress.status = code === 0 ? 'completed' : 'completed_with_errors';
+        // Scan download dir for mp3 files (created by yt-dlp after conversion)
+        try {
+          const files = fs.readdirSync(downloadDir).filter(f => f.endsWith('.mp3'));
+          console.log('[YT] Found mp3 files:', files.length);
+
+          for (const file of files) {
+            const sourcePath = path.join(downloadDir, file);
+            const title = path.parse(file).name;
+
+            // Get duration via ffprobe
+            let duration = 0;
+            try {
+              const durationStr = require('child_process').execSync(
+                `ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${sourcePath}"`,
+                { timeout: 10000 }
+              ).toString().trim();
+              duration = Math.round(parseFloat(durationStr) || 0);
+            } catch {}
+
+            // Move to audio dir
+            const finalFilename = `${Date.now()}-${file}`;
+            const finalPath = path.join(config.audioDir, finalFilename);
+            fs.renameSync(sourcePath, finalPath);
+
+            // Create track in DB
+            const track = playlistService.createTrack({
+              filename: file,
+              filepath: finalPath,
+              title,
+              artist: '',
+              duration,
+              mimetype: 'audio/mpeg',
+              filesize: fs.statSync(finalPath).size,
+            });
+
+            if (playlistId && track) {
+              try { playlistService.addTrackToPlaylist(parseInt(playlistId), track.id); } catch {}
+            }
+
+            progress.completed++;
+            progress.tracks.push({ id: track.id, title });
+            console.log('[YT] Track created:', title, `(${duration}s)`);
+          }
+        } catch (err) {
+          console.error('[YT] Error scanning download dir:', err.message);
+          progress.errors.push(err.message);
+        }
+
+        // Clean up temp dir
+        try { fs.rmSync(downloadDir, { recursive: true, force: true }); } catch {}
+
+        progress.status = progress.completed > 0
+          ? (progress.errors.length > 0 ? 'completed_with_errors' : 'completed')
+          : (code === 0 ? 'completed' : 'failed');
+
         if (progress.completed === 0 && code !== 0) {
-          progress.status = 'failed';
           progress.errors.push('Pobieranie nie powiodlo sie');
         }
+
+        console.log('[YT] Download finished:', progress.completed, 'tracks');
       });
 
     } catch (err) {
@@ -191,7 +199,7 @@ router.get('/download/:id', (req, res) => {
   res.json(progress);
 
   // Clean up completed downloads after reading
-  if (progress.status === 'completed' || progress.status === 'failed') {
+  if (progress.status === 'completed' || progress.status === 'failed' || progress.status === 'completed_with_errors') {
     setTimeout(() => activeDownloads.delete(progress.id), 60000);
   }
 });
