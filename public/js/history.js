@@ -1,6 +1,9 @@
 // History tab
 let _historyDatesCache = null;
 let _historyCurrentView = 'full'; // 'full' or 'summary'
+let _historyFilter = 'all'; // 'all', 'music', 'ads', 'announcements'
+let _historyData = null;
+let _historySummary = null;
 
 function initHistory() {
   const dateInput = document.getElementById('history-date');
@@ -30,51 +33,107 @@ async function loadHistory() {
       renderHistoryDates(_historyDatesCache, date);
     }
 
-    const entries = data.entries || [];
-    const summaryRows = summary.summary || [];
+    _historyData = data.entries || [];
+    _historySummary = summary.summary || [];
 
-    // Stats bar
-    const totalTracks = entries.length;
-    const totalDuration = summary.totalDuration || 0;
-    const announcements = entries.filter(e => e.one_shot).length;
-    const uniqueTracks = summaryRows.length;
-    const hours = Math.floor(totalDuration / 3600);
-    const mins = Math.floor((totalDuration % 3600) / 60);
-    const durStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-
-    statsEl.innerHTML = `<div class="sm-history-stats">
-      <span><strong>${totalTracks}</strong> odtworzen</span>
-      <span><strong>${uniqueTracks}</strong> unikalnych</span>
-      <span><strong>${durStr}</strong> laczny czas</span>
-      ${announcements > 0 ? `<span><strong>${announcements}</strong> komunikatow</span>` : ''}
-      <div style="margin-left:auto; display:flex; gap:6px;">
-        <button onclick="toggleHistoryView()" class="sm-btn sm-btn--small" id="history-view-btn">${_historyCurrentView === 'full' ? 'Podsumowanie' : 'Pelna lista'}</button>
-        <button onclick="exportHistoryCsv('full')" class="sm-btn sm-btn--small" title="Eksport pelnej listy">CSV</button>
-        <button onclick="exportHistoryCsv('summary')" class="sm-btn sm-btn--small" title="Eksport podsumowania">CSV podsumowanie</button>
-      </div>
-    </div>`;
-
-    if (entries.length === 0) {
-      listEl.innerHTML = '<div class="sm-text-muted" style="padding:12px;">Brak historii dla tego dnia.</div>';
-      return;
-    }
-
-    if (_historyCurrentView === 'summary') {
-      renderHistorySummary(listEl, summaryRows);
-    } else {
-      renderHistoryFull(listEl, entries);
-    }
+    renderHistoryStats(statsEl);
+    renderHistoryContent(listEl);
   } catch (err) {
     listEl.innerHTML = `<div style="color:#dc2626;padding:12px;">Blad: ${esc(err.message)}</div>`;
   }
 }
 
+function classifyEntry(e) {
+  if (e.title && e.title.startsWith('[Reklama]')) return 'ad';
+  if (e.one_shot || (e.artist === 'Komunikat') || (e.title && e.title.startsWith('[Komunikat]'))) return 'announcement';
+  return 'music';
+}
+
+function filterEntries(entries) {
+  if (_historyFilter === 'all') return entries;
+  return entries.filter(e => classifyEntry(e) === _historyFilter);
+}
+
+function renderHistoryStats(statsEl) {
+  const entries = _historyData || [];
+  const summaryRows = _historySummary || [];
+
+  const totalTracks = entries.length;
+  const musicCount = entries.filter(e => classifyEntry(e) === 'music').length;
+  const adCount = entries.filter(e => classifyEntry(e) === 'ad').length;
+  const annCount = entries.filter(e => classifyEntry(e) === 'announcement').length;
+
+  const totalDuration = entries.reduce((s, e) => s + (e.duration || 0), 0);
+  const hours = Math.floor(totalDuration / 3600);
+  const mins = Math.floor((totalDuration % 3600) / 60);
+  const durStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+
+  const filterBtn = (label, value, count) => {
+    const active = _historyFilter === value ? ' sm-btn--primary' : '';
+    return `<button onclick="setHistoryFilter('${value}')" class="sm-btn sm-btn--small${active}">${label} (${count})</button>`;
+  };
+
+  statsEl.innerHTML = `<div class="sm-history-stats">
+    <div style="display:flex;gap:4px;flex-wrap:wrap;">
+      ${filterBtn('Wszystko', 'all', totalTracks)}
+      ${filterBtn('Muzyka', 'music', musicCount)}
+      ${adCount > 0 ? filterBtn('Reklamy', 'ads', adCount) : ''}
+      ${annCount > 0 ? filterBtn('Komunikaty', 'announcements', annCount) : ''}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span class="sm-text-muted">${durStr}</span>
+      <button onclick="toggleHistoryView()" class="sm-btn sm-btn--small" id="history-view-btn">${_historyCurrentView === 'full' ? 'Podsumowanie' : 'Pelna lista'}</button>
+      <button onclick="exportHistoryCsv('full')" class="sm-btn sm-btn--small" title="Eksport pelnej listy">CSV</button>
+    </div>
+  </div>`;
+}
+
+function setHistoryFilter(filter) {
+  _historyFilter = filter;
+  const listEl = document.getElementById('history-list');
+  const statsEl = document.getElementById('history-stats');
+  renderHistoryStats(statsEl);
+  renderHistoryContent(listEl);
+}
+
+function renderHistoryContent(listEl) {
+  const entries = _historyData || [];
+  if (entries.length === 0) {
+    listEl.innerHTML = '<div class="sm-text-muted" style="padding:12px;">Brak historii dla tego dnia.</div>';
+    return;
+  }
+
+  if (_historyCurrentView === 'summary') {
+    renderHistorySummary(listEl, filterSummaryRows(_historySummary || []));
+  } else {
+    renderHistoryFull(listEl, filterEntries(entries));
+  }
+}
+
+function filterSummaryRows(rows) {
+  if (_historyFilter === 'all') return rows;
+  return rows.filter(r => {
+    if (_historyFilter === 'ads') return r.title && r.title.startsWith('[Reklama]');
+    if (_historyFilter === 'announcements') return r.one_shot || (r.artist === 'Komunikat') || (r.title && r.title.startsWith('[Komunikat]'));
+    return !(r.title && (r.title.startsWith('[Reklama]') || r.title.startsWith('[Komunikat]'))) && !r.one_shot;
+  });
+}
+
 function renderHistoryFull(container, entries) {
   const chronological = [...entries].reverse();
+  if (chronological.length === 0) {
+    container.innerHTML = '<div class="sm-text-muted" style="padding:12px;">Brak wpisow dla tego filtra.</div>';
+    return;
+  }
+
   let html = '<table class="sm-table"><thead><tr><th>Czas</th><th>Tytul</th><th>Artysta</th><th>Dlugosc</th><th>Typ</th></tr></thead><tbody>';
   for (const e of chronological) {
     const time = new Date(e.played_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const typeTag = e.one_shot ? '<span class="sm-tag sm-tag--oneshot">1x</span>' : '';
+    const type = classifyEntry(e);
+    let typeTag = '';
+    if (type === 'ad') typeTag = '<span class="sm-tag sm-tag--ad">Reklama</span>';
+    else if (type === 'announcement') typeTag = '<span class="sm-tag sm-tag--oneshot">Komunikat</span>';
+
     html += `<tr>
       <td>${time}</td>
       <td>${esc(e.title)}</td>
@@ -88,9 +147,18 @@ function renderHistoryFull(container, entries) {
 }
 
 function renderHistorySummary(container, rows) {
+  if (rows.length === 0) {
+    container.innerHTML = '<div class="sm-text-muted" style="padding:12px;">Brak wpisow dla tego filtra.</div>';
+    return;
+  }
+
   let html = '<table class="sm-table"><thead><tr><th>Tytul</th><th>Artysta</th><th>Odtworzen</th><th>Laczny czas</th><th>Pierwsze</th><th>Ostatnie</th><th>Typ</th></tr></thead><tbody>';
   for (const r of rows) {
-    const typeTag = r.one_shot ? '<span class="sm-tag sm-tag--oneshot">Komunikat</span>' : '';
+    const type = classifyEntry(r);
+    let typeTag = '';
+    if (type === 'ad') typeTag = '<span class="sm-tag sm-tag--ad">Reklama</span>';
+    else if (type === 'announcement') typeTag = '<span class="sm-tag sm-tag--oneshot">Komunikat</span>';
+
     const first = r.first_play ? new Date(r.first_play).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '-';
     const last = r.last_play ? new Date(r.last_play).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '-';
     html += `<tr>
@@ -109,7 +177,10 @@ function renderHistorySummary(container, rows) {
 
 function toggleHistoryView() {
   _historyCurrentView = _historyCurrentView === 'full' ? 'summary' : 'full';
-  loadHistory();
+  const listEl = document.getElementById('history-list');
+  const statsEl = document.getElementById('history-stats');
+  renderHistoryStats(statsEl);
+  renderHistoryContent(listEl);
 }
 
 function exportHistoryCsv(mode) {
@@ -131,7 +202,7 @@ function renderHistoryDates(dates, selectedDate) {
     months[month].push(d);
   }
 
-  let html = '<div class="sm-card"><div class="sm-card-header"><h3>Dostepne daty</h3></div><div class="sm-history-calendar">';
+  let html = '<div class="sm-card sm-card--sticky"><div class="sm-card-header"><h3>Kalendarz</h3></div><div class="sm-history-calendar">';
   for (const [month, days] of Object.entries(months)) {
     const [y, m] = month.split('-');
     const monthName = new Date(y, m - 1).toLocaleDateString('pl-PL', { year: 'numeric', month: 'long' });

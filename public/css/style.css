@@ -1433,6 +1433,11 @@ input[type="file"] { display: none; }
   color: #f97316;
   border-color: #f97316;
 }
+.sm-tag--ad {
+  background: rgba(139, 92, 246, 0.15);
+  color: #8b5cf6;
+  border-color: #8b5cf6;
+}
 .sm-text-muted { color: var(--sm-text-muted); }
 
 /* Loop button */
@@ -1595,6 +1600,79 @@ input[type="file"] { display: none; }
 
 .sm-scheduled-ad--played {
   opacity: 0.5;
+}
+
+/* ===== Ad Report ===== */
+.sm-ad-report-summary {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.sm-ad-report-stat {
+  flex: 1;
+  text-align: center;
+  padding: 8px;
+  background: var(--sm-bg);
+  border-radius: 6px;
+}
+.sm-ad-report-stat-num {
+  display: block;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--sm-primary);
+}
+.sm-ad-report-stat-label {
+  font-size: 0.7rem;
+  color: var(--sm-text-muted);
+  text-transform: uppercase;
+}
+.sm-ad-report-item {
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--sm-border);
+}
+.sm-ad-report-item:last-child { border-bottom: none; }
+.sm-ad-report-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.sm-ad-report-item-total {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--sm-primary);
+}
+.sm-ad-report-item-meta {
+  font-size: 0.75rem;
+  color: var(--sm-text-muted);
+  margin: 2px 0 6px;
+}
+.sm-ad-report-item-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sm-ad-report-day {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+}
+.sm-ad-report-day-date {
+  min-width: 36px;
+  color: var(--sm-text-muted);
+}
+.sm-ad-report-day-bar {
+  height: 6px;
+  background: var(--sm-primary);
+  border-radius: 3px;
+  min-width: 2px;
+  flex-shrink: 0;
+}
+.sm-ad-report-day-count {
+  min-width: 16px;
+  color: var(--sm-text);
+  font-weight: 600;
 }
 
 /* ===== Track Preview ===== */

@@ -108,6 +108,131 @@ function showAdUpload() {
   modal.classList.add('sm-modal--open');
 }
 
+function showAdTts() {
+  const modal = document.getElementById('modal');
+  const modalBody = document.getElementById('modal-body');
+  modalBody.innerHTML = `
+    <h2>Generuj reklame TTS</h2>
+    <div class="sm-form-row"><label>Tytul reklamy: <input type="text" id="ad-tts-title" class="sm-input" placeholder="Nazwa reklamy"></label></div>
+    <div class="sm-form-row"><label>Klient: <input type="text" id="ad-tts-client" class="sm-input" placeholder="Nazwa firmy"></label></div>
+    <div class="sm-form-row"><label>Tekst do odczytania:</label>
+      <textarea id="ad-tts-text" class="sm-input" rows="3" placeholder="Uwaga! Promocja dnia..."></textarea>
+    </div>
+    <div class="sm-form-row" style="display:flex;gap:8px;">
+      <label style="flex:1;">Silnik TTS:
+        <select id="ad-tts-engine" class="sm-input" onchange="adTtsEngineChange()">
+          <option value="google">Google TTS</option>
+          <option value="edge">Microsoft Edge TTS</option>
+        </select>
+      </label>
+      <label style="flex:1;">Jezyk:
+        <select id="ad-tts-lang" class="sm-input">
+          <option value="pl">Polski</option>
+          <option value="en">English</option>
+          <option value="de">Deutsch</option>
+        </select>
+      </label>
+    </div>
+    <div class="sm-form-row" id="ad-tts-voice-row" style="display:none;">
+      <label>Glos Edge: <select id="ad-tts-voice" class="sm-input"><option>Ladowanie...</option></select></label>
+    </div>
+    <hr style="border-color:var(--sm-border);margin:12px 0;">
+    <h3>Harmonogram</h3>
+    <div class="sm-form-row">
+      <label>Tryb:
+        <select id="ad-tts-mode" class="sm-input" onchange="adTtsModeChange()">
+          <option value="count">Ilosc odtworzen dziennie</option>
+          <option value="interval">Co N minut</option>
+        </select>
+      </label>
+    </div>
+    <div class="sm-form-row" id="ad-tts-count-row"><label>Ile razy dziennie: <input type="number" id="ad-tts-daily" class="sm-input" value="3" min="1" max="100"></label></div>
+    <div class="sm-form-row" id="ad-tts-interval-row" style="display:none;"><label>Co ile minut: <input type="number" id="ad-tts-interval" class="sm-input" value="60" min="5" max="480"></label></div>
+    <div class="sm-form-row" style="display:flex;gap:8px;">
+      <label style="flex:1;">Od godziny: <input type="time" id="ad-tts-start" class="sm-input" value="08:00"></label>
+      <label style="flex:1;">Do godziny: <input type="time" id="ad-tts-end" class="sm-input" value="20:00"></label>
+    </div>
+    <div class="sm-form-row"><label>Priorytet (1-10): <input type="number" id="ad-tts-priority" class="sm-input" value="5" min="1" max="10"></label></div>
+    <div class="sm-form-row">
+      <label>Tryb odtwarzania:
+        <select id="ad-tts-playmode" class="sm-input">
+          <option value="queue">Kolejka (po biezacym utworze)</option>
+          <option value="interrupt">Przerwij (natychmiastowe odtworzenie)</option>
+        </select>
+      </label>
+    </div>
+    <div class="sm-form-row">
+      <label>Dni tygodnia:</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+        <label><input type="checkbox" class="ad-tts-day" value="1" checked> Pn</label>
+        <label><input type="checkbox" class="ad-tts-day" value="2" checked> Wt</label>
+        <label><input type="checkbox" class="ad-tts-day" value="3" checked> Sr</label>
+        <label><input type="checkbox" class="ad-tts-day" value="4" checked> Cz</label>
+        <label><input type="checkbox" class="ad-tts-day" value="5" checked> Pt</label>
+        <label><input type="checkbox" class="ad-tts-day" value="6" checked> Sb</label>
+        <label><input type="checkbox" class="ad-tts-day" value="0"> Nd</label>
+      </div>
+    </div>
+    <div id="ad-tts-error" style="color:#dc2626;font-size:0.85rem;margin:8px 0;"></div>
+    <button onclick="submitAdTts()" class="sm-btn sm-btn--primary">Generuj i dodaj reklame</button>
+  `;
+  modal.classList.add('sm-modal--open');
+}
+
+function adTtsEngineChange() {
+  const engine = document.getElementById('ad-tts-engine').value;
+  const voiceRow = document.getElementById('ad-tts-voice-row');
+  voiceRow.style.display = engine === 'edge' ? '' : 'none';
+  if (engine === 'edge') {
+    API.get('/announcements/tts/voices').then(voices => {
+      const sel = document.getElementById('ad-tts-voice');
+      sel.innerHTML = voices.filter(v => v.id.startsWith('pl')).concat(voices.filter(v => !v.id.startsWith('pl'))).map(v =>
+        `<option value="${v.id}">${v.id} (${v.gender})</option>`
+      ).join('');
+    }).catch(() => {});
+  }
+}
+
+function adTtsModeChange() {
+  const mode = document.getElementById('ad-tts-mode').value;
+  document.getElementById('ad-tts-count-row').style.display = mode === 'count' ? '' : 'none';
+  document.getElementById('ad-tts-interval-row').style.display = mode === 'interval' ? '' : 'none';
+}
+
+async function submitAdTts() {
+  const text = document.getElementById('ad-tts-text').value.trim();
+  const errEl = document.getElementById('ad-tts-error');
+  if (!text) { errEl.textContent = 'Wpisz tekst do odczytania'; return; }
+
+  const days = Array.from(document.querySelectorAll('.ad-tts-day:checked')).map(cb => parseInt(cb.value));
+  if (days.length === 0) { errEl.textContent = 'Wybierz przynajmniej jeden dzien'; return; }
+
+  errEl.textContent = 'Generowanie...';
+
+  try {
+    await API.post('/ads/tts', {
+      title: document.getElementById('ad-tts-title').value || text.substring(0, 50),
+      client_name: document.getElementById('ad-tts-client').value,
+      text,
+      engine: document.getElementById('ad-tts-engine').value,
+      language: document.getElementById('ad-tts-lang').value,
+      voice: document.getElementById('ad-tts-voice')?.value,
+      schedule_mode: document.getElementById('ad-tts-mode').value,
+      daily_target: parseInt(document.getElementById('ad-tts-daily').value),
+      interval_minutes: parseInt(document.getElementById('ad-tts-interval').value),
+      start_time: document.getElementById('ad-tts-start').value,
+      end_time: document.getElementById('ad-tts-end').value,
+      priority: parseInt(document.getElementById('ad-tts-priority').value),
+      play_mode: document.getElementById('ad-tts-playmode').value,
+      days_of_week: days,
+    });
+    document.getElementById('modal').classList.remove('sm-modal--open');
+    await loadAds();
+  } catch (err) {
+    errEl.textContent = err.message;
+  }
+}
+
 function adModeChange() {
   const mode = document.getElementById('ad-upload-mode').value;
   document.getElementById('ad-count-row').style.display = mode === 'count' ? '' : 'none';
@@ -242,20 +367,54 @@ async function loadAdReport() {
 
     // Group by title
     const byTitle = {};
+    let grandTotal = 0;
     for (const e of data.entries) {
       const title = e.title.replace('[Reklama] ', '');
-      if (!byTitle[title]) byTitle[title] = { total: 0, dates: [] };
+      if (!byTitle[title]) byTitle[title] = { total: 0, dates: [], daysActive: 0 };
       byTitle[title].total += e.play_count;
+      byTitle[title].daysActive++;
       byTitle[title].dates.push({ date: e.date, count: e.play_count });
+      grandTotal += e.play_count;
     }
 
-    let html = '<div style="padding:8px 12px;">';
+    const dayCount = Object.keys(
+      data.entries.reduce((acc, e) => { acc[e.date] = 1; return acc; }, {})
+    ).length;
+
+    let html = `<div style="padding:8px 12px;">
+      <div class="sm-ad-report-summary">
+        <div class="sm-ad-report-stat">
+          <span class="sm-ad-report-stat-num">${grandTotal}</span>
+          <span class="sm-ad-report-stat-label">odtworzen lacznie</span>
+        </div>
+        <div class="sm-ad-report-stat">
+          <span class="sm-ad-report-stat-num">${Object.keys(byTitle).length}</span>
+          <span class="sm-ad-report-stat-label">reklam</span>
+        </div>
+        <div class="sm-ad-report-stat">
+          <span class="sm-ad-report-stat-num">${dayCount}</span>
+          <span class="sm-ad-report-stat-label">dni</span>
+        </div>
+      </div>`;
+
     for (const [title, info] of Object.entries(byTitle)) {
-      html += `<div style="margin-bottom:12px;">
-        <strong>${esc(title)}</strong> — <span style="color:var(--sm-primary);">${info.total} odtworzen</span>
-        <div style="font-size:0.8rem;color:var(--sm-text-muted);margin-top:2px;">`;
-      for (const d of info.dates.slice(0, 10)) {
-        html += `${d.date}: ${d.count}x &nbsp; `;
+      const avgPerDay = info.daysActive > 0 ? (info.total / info.daysActive).toFixed(1) : 0;
+      html += `<div class="sm-ad-report-item">
+        <div class="sm-ad-report-item-header">
+          <strong>${esc(title)}</strong>
+          <span class="sm-ad-report-item-total">${info.total}x</span>
+        </div>
+        <div class="sm-ad-report-item-meta">
+          ${info.daysActive} dni aktywnych &middot; sr. ${avgPerDay}/dzien
+        </div>
+        <div class="sm-ad-report-item-dates">`;
+      for (const d of info.dates.slice(-14)) {
+        const barW = Math.min(100, (d.count / Math.max(...info.dates.map(x => x.count))) * 100);
+        html += `<div class="sm-ad-report-day">
+          <span class="sm-ad-report-day-date">${d.date.slice(5)}</span>
+          <div class="sm-ad-report-day-bar" style="width:${barW}%"></div>
+          <span class="sm-ad-report-day-count">${d.count}</span>
+        </div>`;
       }
       html += '</div></div>';
     }

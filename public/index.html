@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Store Music Manager</title>
-  <link rel="stylesheet" href="/css/style.css?v=20260307t">
+  <link rel="stylesheet" href="/css/style.css?v=20260307u">
 </head>
 <body>
   <div class="sm-app">
@@ -277,7 +277,8 @@
               <div class="sm-card-header">
                 <h2>Reklamy / Spoty</h2>
                 <div style="display: flex; gap: 6px;">
-                  <button onclick="showAdUpload()" class="sm-btn sm-btn--small">+ Dodaj reklame</button>
+                  <button onclick="showAdUpload()" class="sm-btn sm-btn--small">+ Wgraj audio</button>
+                  <button onclick="showAdTts()" class="sm-btn sm-btn--small">+ Generuj TTS</button>
                   <input type="file" id="ad-file-input" accept=".mp3,.wav,.ogg,.flac" style="display:none;">
                 </div>
               </div>
@@ -307,16 +308,24 @@
 
       <!-- History -->
       <div id="section-history" class="sm-section">
-        <div class="sm-section-header">
-          <h2>Historia odtwarzania</h2>
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <input type="date" id="history-date" class="sm-input" style="max-width: 160px;">
-            <button onclick="loadHistory()" class="sm-btn sm-btn--small sm-btn--primary">Pokaz</button>
+        <div class="sm-grid">
+          <div class="sm-grid-main">
+            <div class="sm-card">
+              <div class="sm-card-header">
+                <h2>Historia odtwarzania</h2>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input type="date" id="history-date" class="sm-input" style="max-width: 160px;">
+                  <button onclick="loadHistory()" class="sm-btn sm-btn--small sm-btn--primary">Pokaz</button>
+                </div>
+              </div>
+              <div id="history-stats" style="margin-bottom: 0;"></div>
+              <div id="history-list"></div>
+            </div>
+          </div>
+          <div class="sm-grid-side">
+            <div id="history-dates"></div>
           </div>
         </div>
-        <div id="history-stats" style="margin-bottom: 12px;"></div>
-        <div id="history-list"></div>
-        <div id="history-dates" style="margin-top: 16px;"></div>
       </div>
 
       <!-- Users -->
@@ -357,16 +366,16 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/api.js?v=20260307t"></script>
-  <script src="/js/player.js?v=20260307t"></script>
-  <script src="/js/playlists.js?v=20260307t"></script>
-  <script src="/js/schedule.js?v=20260307t"></script>
-  <script src="/js/announcements.js?v=20260307t"></script>
-  <script src="/js/users.js?v=20260307t"></script>
-  <script src="/js/radio.js?v=20260307t"></script>
-  <script src="/js/youtube.js?v=20260307t"></script>
-  <script src="/js/ads.js?v=20260307t"></script>
-  <script src="/js/history.js?v=20260307t"></script>
-  <script src="/js/app.js?v=20260307t"></script>
+  <script src="/js/api.js?v=20260307u"></script>
+  <script src="/js/player.js?v=20260307u"></script>
+  <script src="/js/playlists.js?v=20260307u"></script>
+  <script src="/js/schedule.js?v=20260307u"></script>
+  <script src="/js/announcements.js?v=20260307u"></script>
+  <script src="/js/users.js?v=20260307u"></script>
+  <script src="/js/radio.js?v=20260307u"></script>
+  <script src="/js/youtube.js?v=20260307u"></script>
+  <script src="/js/ads.js?v=20260307u"></script>
+  <script src="/js/history.js?v=20260307u"></script>
+  <script src="/js/app.js?v=20260307u"></script>
 </body>
 </html>

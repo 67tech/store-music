@@ -4,7 +4,9 @@ const multer = require('multer');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../config');
+const fs = require('fs');
 const adService = require('../services/AdService');
+const ttsService = require('../services/TtsService');
 const { requirePermission } = require('../middleware/auth');
 
 // Multer for ad file uploads
@@ -57,6 +59,43 @@ router.post('/', requirePermission('announcement_manage'), upload.single('file')
 
     res.status(201).json(ad);
   });
+});
+
+// Create ad from TTS
+router.post('/tts', requirePermission('announcement_manage'), async (req, res) => {
+  try {
+    const { title, client_name, text, engine, language, voice,
+            schedule_mode, daily_target, interval_minutes,
+            start_time, end_time, days_of_week, priority, play_mode } = req.body;
+    if (!text) return res.status(400).json({ error: 'Tekst jest wymagany' });
+
+    const { filepath, duration } = await ttsService.generate(text, engine, language, voice);
+
+    // Copy to uploads dir
+    const filename = `ad-tts-${path.basename(filepath)}`;
+    const destPath = path.join(config.uploadsDir, filename);
+    fs.copyFileSync(filepath, destPath);
+
+    const ad = adService.createAd({
+      title: title || text.substring(0, 50),
+      client_name: client_name || '',
+      filepath: destPath,
+      filename,
+      duration,
+      schedule_mode: schedule_mode || 'count',
+      daily_target: parseInt(daily_target) || 1,
+      interval_minutes: parseInt(interval_minutes) || 60,
+      start_time: start_time || '08:00',
+      end_time: end_time || '20:00',
+      days_of_week: days_of_week || [1,2,3,4,5,6],
+      priority: parseInt(priority) || 5,
+      play_mode: play_mode || 'queue',
+    });
+
+    res.status(201).json(ad);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Update ad settings
