@@ -345,6 +345,17 @@ function initSchema() {
       target_date TEXT,
       FOREIGN KEY (pack_id) REFERENCES announcement_packs(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      username TEXT,
+      action TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'general',
+      details TEXT,
+      ip TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Seed default settings

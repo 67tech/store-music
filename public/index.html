@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Store Music Manager</title>
-  <link rel="stylesheet" href="/css/style.css?v=20260307z11">
+  <link rel="stylesheet" href="/css/style.css?v=20260308z5">
 </head>
 <body>
   <div class="sm-app">
@@ -102,6 +102,10 @@
       <button class="sm-nav-tab" data-tab="settings" id="nav-settings">
         <span class="sm-nav-icon">&#9881;</span>
         <span class="sm-nav-label">Ustawienia</span>
+      </button>
+      <button class="sm-nav-tab" data-tab="audit" id="nav-audit">
+        <span class="sm-nav-icon">&#128203;</span>
+        <span class="sm-nav-label">Logi</span>
       </button>
       <button class="sm-nav-tab" data-tab="users" id="nav-users">
         <span class="sm-nav-icon">&#128101;</span>
@@ -406,6 +410,44 @@
         </div>
       </div>
 
+      <!-- Audit Log -->
+      <div id="section-audit" class="sm-section">
+        <div class="sm-card">
+          <div class="sm-card-header">
+            <h2>Logi operacji</h2>
+            <button onclick="exportAuditCsv()" class="sm-btn sm-btn--small">Eksport CSV</button>
+          </div>
+          <div style="padding: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end;">
+            <div class="sm-form-row" style="flex:1;min-width:120px;">
+              <label>Kategoria</label>
+              <select id="audit-filter-category" onchange="loadAuditLog()">
+                <option value="">Wszystkie</option>
+              </select>
+            </div>
+            <div class="sm-form-row" style="flex:1;min-width:120px;">
+              <label>Uzytkownik</label>
+              <select id="audit-filter-user" onchange="loadAuditLog()">
+                <option value="">Wszyscy</option>
+              </select>
+            </div>
+            <div class="sm-form-row" style="flex:1;min-width:120px;">
+              <label>Od</label>
+              <input type="date" id="audit-filter-from" onchange="loadAuditLog()">
+            </div>
+            <div class="sm-form-row" style="flex:1;min-width:120px;">
+              <label>Do</label>
+              <input type="date" id="audit-filter-to" onchange="loadAuditLog()">
+            </div>
+            <div class="sm-form-row" style="flex:2;min-width:150px;">
+              <label>Szukaj</label>
+              <input type="text" id="audit-filter-search" placeholder="Szukaj w akcjach..." oninput="debounceAuditSearch()">
+            </div>
+          </div>
+          <div id="audit-log-list"></div>
+          <div id="audit-pagination" style="padding: 12px; text-align: center;"></div>
+        </div>
+      </div>
+
       <!-- Users -->
       <div id="section-users" class="sm-section">
         <div class="sm-grid">
@@ -444,17 +486,18 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/api.js?v=20260307z11"></script>
-  <script src="/js/player.js?v=20260307z11"></script>
-  <script src="/js/playlists.js?v=20260307z11"></script>
-  <script src="/js/schedule.js?v=20260307z11"></script>
-  <script src="/js/announcements.js?v=20260307z11"></script>
-  <script src="/js/users.js?v=20260307z11"></script>
-  <script src="/js/radio.js?v=20260307z11"></script>
-  <script src="/js/youtube.js?v=20260307z11"></script>
-  <script src="/js/calendar.js?v=20260307z11"></script>
-  <script src="/js/ads.js?v=20260307z11"></script>
-  <script src="/js/history.js?v=20260307z11"></script>
-  <script src="/js/app.js?v=20260307z11"></script>
+  <script src="/js/api.js?v=20260308z5"></script>
+  <script src="/js/player.js?v=20260308z5"></script>
+  <script src="/js/playlists.js?v=20260308z5"></script>
+  <script src="/js/schedule.js?v=20260308z5"></script>
+  <script src="/js/announcements.js?v=20260308z5"></script>
+  <script src="/js/users.js?v=20260308z5"></script>
+  <script src="/js/radio.js?v=20260308z5"></script>
+  <script src="/js/youtube.js?v=20260308z5"></script>
+  <script src="/js/calendar.js?v=20260308z5"></script>
+  <script src="/js/ads.js?v=20260308z5"></script>
+  <script src="/js/history.js?v=20260308z5"></script>
+  <script src="/js/audit.js?v=20260308z5"></script>
+  <script src="/js/app.js?v=20260308z5"></script>
 </body>
 </html>

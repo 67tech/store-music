@@ -8,6 +8,7 @@ const path = require('path');
 const config = require('./src/config');
 const { getDb } = require('./src/db');
 const { requireAuth, requirePermission } = require('./src/middleware/auth');
+const auditLogMiddleware = require('./src/middleware/auditLog');
 const playerService = require('./src/services/PlayerService');
 const schedulerService = require('./src/services/SchedulerService');
 
@@ -55,6 +56,9 @@ app.post('/api/server/restart', requireAuth, requirePermission('server_restart')
 
 // Expose io for routes that need to emit events
 app.set('io', io);
+
+// Audit log middleware (logs all mutating API calls)
+app.use(auditLogMiddleware);
 
 // Protect all other routes
 app.use('/api', requireAuth, require('./src/routes/api'));

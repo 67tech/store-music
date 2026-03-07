@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { getDb } = require('../db');
+const auditService = require('../services/AuditService');
 const router = express.Router();
 
 // Login page
@@ -28,11 +29,14 @@ router.post('/api/auth/login', (req, res) => {
 
   req.session.userId = user.id;
   req.session.username = user.username;
+  req.session.user = { id: user.id, username: user.username };
+  auditService.log(req, 'Logowanie', 'auth', { username: user.username });
   res.json({ success: true, username: user.username });
 });
 
 // Logout
 router.post('/api/auth/logout', (req, res) => {
+  auditService.log(req, 'Wylogowanie', 'auth', { username: req.session?.username });
   req.session.destroy();
   res.json({ success: true });
 });

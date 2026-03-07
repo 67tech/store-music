@@ -13,5 +13,6 @@ router.use('/ads', require('./ads'));
 router.use('/ad-packs', require('./adPacks'));
 router.use('/announcement-packs', require('./announcementPacks'));
 router.use('/backup', require('./backup'));
+router.use('/audit', require('./audit'));
 
 module.exports = router;

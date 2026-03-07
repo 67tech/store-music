@@ -108,6 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initAds();
   initCalendar();
   initHistory();
+  initAudit();
   loadSettings(); // Settings tab — loads playback + TTS config
 
   // First-run setup wizard
@@ -179,6 +180,10 @@ function applyPermissions() {
   const settingsTab = document.getElementById('nav-settings');
   if (settingsTab && !currentUserPerms.settings_manage) {
     settingsTab.style.display = 'none';
+  }
+  const auditTab = document.getElementById('nav-audit');
+  if (auditTab && !currentUserPerms.settings_manage) {
+    auditTab.style.display = 'none';
   }
 }
 
@@ -583,27 +588,40 @@ async function showSetupWizard() {
 
         <div id="setup-step-2" class="setup-step" style="margin-top:16px;">
           <h3>2. Godziny pracy</h3>
-          <div style="display:flex;gap:12px;">
-            <div class="sm-form-row" style="flex:1;">
-              <label>Otwarcie</label>
-              <input type="time" id="setup-open-time" class="sm-input" value="09:00">
-            </div>
-            <div class="sm-form-row" style="flex:1;">
-              <label>Zamkniecie</label>
-              <input type="time" id="setup-close-time" class="sm-input" value="20:00">
-            </div>
-          </div>
-          <div class="sm-form-row" style="margin-top:8px;">
-            <label>Dni pracy</label>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;" id="setup-days">
-              <label style="font-weight:normal;cursor:pointer;"><input type="checkbox" value="1" checked> Pon</label>
-              <label style="font-weight:normal;cursor:pointer;"><input type="checkbox" value="2" checked> Wt</label>
-              <label style="font-weight:normal;cursor:pointer;"><input type="checkbox" value="3" checked> Sr</label>
-              <label style="font-weight:normal;cursor:pointer;"><input type="checkbox" value="4" checked> Czw</label>
-              <label style="font-weight:normal;cursor:pointer;"><input type="checkbox" value="5" checked> Pt</label>
-              <label style="font-weight:normal;cursor:pointer;"><input type="checkbox" value="6" checked> Sob</label>
-              <label style="font-weight:normal;cursor:pointer;"><input type="checkbox" value="0"> Ndz</label>
-            </div>
+          <table style="width:100%;font-size:0.9rem;border-collapse:collapse;">
+            <thead>
+              <tr style="border-bottom:2px solid var(--sm-border);">
+                <th style="text-align:left;padding:6px 8px;color:var(--sm-text);">Dzien</th>
+                <th style="padding:6px 8px;color:var(--sm-text);">Otwarcie</th>
+                <th style="padding:6px 8px;color:var(--sm-text);">Zamkniecie</th>
+                <th style="padding:6px 8px;color:var(--sm-text);">Otwarte</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom:1px solid var(--sm-border);"><td style="padding:6px 8px;color:var(--sm-text);">Poniedzialek</td><td style="padding:6px 8px;"><input type="time" class="sm-input setup-hour-open" data-day="1" value="09:00" style="font-size:0.9rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));"></td><td style="padding:6px 8px;"><input type="time" class="sm-input setup-hour-close" data-day="1" value="20:00" style="font-size:0.9rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));"></td><td style="text-align:center;padding:6px 8px;"><input type="checkbox" class="setup-hour-active" data-day="1" checked style="width:18px;height:18px;"></td></tr>
+              <tr style="border-bottom:1px solid var(--sm-border);"><td style="padding:6px 8px;color:var(--sm-text);">Wtorek</td><td style="padding:6px 8px;"><input type="time" class="sm-input setup-hour-open" data-day="2" value="09:00" style="font-size:0.9rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));"></td><td style="padding:6px 8px;"><input type="time" class="sm-input setup-hour-close" data-day="2" value="20:00" style="font-size:0.9rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));"></td><td style="text-align:center;padding:6px 8px;"><input type="checkbox" class="setup-hour-active" data-day="2" checked style="width:18px;height:18px;"></td></tr>
+              <tr style="border-bottom:1px solid var(--sm-border);"><td style="padding:6px 8px;color:var(--sm-text);">Sroda</td><td style="padding:6px 8px;"><input type="time" class="sm-input setup-hour-open" data-day="3" value="09:00" style="font-size:0.9rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));"></td><td style="padding:6px 8px;"><input type="time" class="sm-input setup-hour-close" data-day="3" value="20:00" style="font-size:0.9rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));"></td><td style="text-align:center;padding:6px 8px;"><input type="checkbox" class="setup-hour-active" data-day="3" checked style="width:18px;height:18px;"></td></tr>
+              <tr style="border-bottom:1px solid var(--sm-border);"><td style="padding:6px 8px;color:var(--sm-text);">Czwartek</td><td style="padding:6px 8px;"><input type="time" class="sm-input setup-hour-open" data-day="4" value="09:00" style="font-size:0.9rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));"></td><td style="padding:6px 8px;"><input type="time" class="sm-input setup-hour-close" data-day="4" value="20:00" style="font-size:0.9rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));"></td><td style="text-align:center;padding:6px 8px;"><input type="checkbox" class="setup-hour-active" data-day="4" checked style="width:18px;height:18px;"></td></tr>
+              <tr style="border-bottom:1px solid var(--sm-border);"><td style="padding:6px 8px;color:var(--sm-text);">Piatek</td><td style="padding:6px 8px;"><input type="time" class="sm-input setup-hour-open" data-day="5" value="09:00" style="font-size:0.9rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));"></td><td style="padding:6px 8px;"><input type="time" class="sm-input setup-hour-close" data-day="5" value="20:00" style="font-size:0.9rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));"></td><td style="text-align:center;padding:6px 8px;"><input type="checkbox" class="setup-hour-active" data-day="5" checked style="width:18px;height:18px;"></td></tr>
+              <tr style="border-bottom:1px solid var(--sm-border);background:rgba(255,255,255,0.05);"><td style="padding:6px 8px;color:var(--sm-text);font-weight:600;">Sobota</td><td style="padding:6px 8px;"><input type="time" class="sm-input setup-hour-open" data-day="6" value="10:00" style="font-size:0.9rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));"></td><td style="padding:6px 8px;"><input type="time" class="sm-input setup-hour-close" data-day="6" value="18:00" style="font-size:0.9rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));"></td><td style="text-align:center;padding:6px 8px;"><input type="checkbox" class="setup-hour-active" data-day="6" checked style="width:18px;height:18px;"></td></tr>
+              <tr style="background:rgba(255,255,255,0.05);"><td style="padding:6px 8px;color:var(--sm-text);font-weight:600;">Niedziela</td><td style="padding:6px 8px;"><input type="time" class="sm-input setup-hour-open" data-day="0" value="10:00" style="font-size:0.9rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));"></td><td style="padding:6px 8px;"><input type="time" class="sm-input setup-hour-close" data-day="0" value="16:00" style="font-size:0.9rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));"></td><td style="text-align:center;padding:6px 8px;"><input type="checkbox" class="setup-hour-active" data-day="0" style="width:18px;height:18px;"></td></tr>
+            </tbody>
+          </table>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+            <span style="font-size:0.85rem;color:var(--sm-text);">Kopiuj godziny z:</span>
+            <select id="setup-copy-src" class="sm-input" style="width:auto;font-size:0.85rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));">
+              <option value="1">Poniedzialek</option>
+              <option value="2">Wtorek</option>
+              <option value="3">Sroda</option>
+              <option value="4">Czwartek</option>
+              <option value="5">Piatek</option>
+              <option value="6">Sobota</option>
+              <option value="0">Niedziela</option>
+            </select>
+            <span style="font-size:0.85rem;color:var(--sm-text);">do:</span>
+            <button onclick="setupCopyHours('all')" class="sm-btn sm-btn--small">Wszystkich</button>
+            <button onclick="setupCopyHours('weekdays')" class="sm-btn sm-btn--small">Pon-Pt</button>
+            <button onclick="setupCopyHours('weekend')" class="sm-btn sm-btn--small">Sob-Ndz</button>
           </div>
         </div>
 
@@ -627,8 +645,8 @@ async function showSetupWizard() {
         </div>
 
         <div id="setup-step-4" class="setup-step" style="margin-top:16px;">
-          <h3>4. Uzytkownicy</h3>
-          <p class="sm-text-muted" style="font-size:0.85rem;margin-bottom:8px;">Konto admin juz istnieje. Dodaj dodatkowych uzytkownikow (opcjonalnie).</p>
+          <h3>4. Uzytkownicy <span class="sm-text-muted" style="font-weight:normal;font-size:0.8rem;">(opcjonalnie)</span></h3>
+          <p class="sm-text-muted" style="font-size:0.85rem;margin-bottom:8px;">Konto admin juz istnieje. Mozesz dodac dodatkowych uzytkownikow teraz lub pozniej w ustawieniach.</p>
           <div id="setup-users-list"></div>
           <div style="display:flex;gap:6px;align-items:center;margin-top:8px;">
             <input type="text" id="setup-new-user" class="sm-input" placeholder="Login" style="flex:1;">
@@ -642,7 +660,7 @@ async function showSetupWizard() {
         </div>
 
         <div id="setup-step-5" class="setup-step" style="margin-top:16px;">
-          <h3>5. Silnik TTS (opcjonalnie)</h3>
+          <h3>5. Silnik TTS <span class="sm-text-muted" style="font-weight:normal;font-size:0.8rem;">(opcjonalnie)</span></h3>
           <div class="sm-form-row">
             <select id="setup-tts" class="sm-input">
               <option value="google">Google TTS (online, darmowy)</option>
@@ -650,6 +668,49 @@ async function showSetupWizard() {
               <option value="elevenlabs">ElevenLabs (online, premium)</option>
               <option value="">Bez TTS</option>
             </select>
+          </div>
+        </div>
+
+        <div id="setup-step-6" class="setup-step" style="margin-top:16px;">
+          <h3>6. Kopia zapasowa <span class="sm-text-muted" style="font-weight:normal;font-size:0.8rem;">(opcjonalnie)</span></h3>
+          <div class="sm-form-row">
+            <label style="font-weight:normal;cursor:pointer;">
+              <input type="checkbox" id="setup-backup-enabled"> Wlacz automatyczna kopie zapasowa (raz w tygodniu)
+            </label>
+          </div>
+          <div id="setup-backup-details" style="display:none;margin-top:8px;">
+            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+              <div class="sm-form-row" style="flex:1;min-width:140px;">
+                <label style="font-size:0.85rem;">Dzien tygodnia</label>
+                <select id="setup-backup-day" class="sm-input" style="font-size:0.85rem;">
+                  <option value="0">Niedziela</option>
+                  <option value="1">Poniedzialek</option>
+                  <option value="2">Wtorek</option>
+                  <option value="3">Sroda</option>
+                  <option value="4">Czwartek</option>
+                  <option value="5">Piatek</option>
+                  <option value="6">Sobota</option>
+                </select>
+              </div>
+              <div class="sm-form-row" style="flex:1;min-width:120px;">
+                <label style="font-size:0.85rem;">Godzina</label>
+                <input type="time" id="setup-backup-hour" class="sm-input" value="03:00" style="font-size:0.85rem;color:var(--sm-text);background:var(--sm-input-bg,var(--sm-bg));">
+              </div>
+              <div class="sm-form-row" style="flex:1;min-width:100px;">
+                <label style="font-size:0.85rem;">Ile kopii trzymac</label>
+                <input type="number" id="setup-backup-keep" class="sm-input" value="4" min="1" max="20" style="font-size:0.85rem;max-width:80px;">
+              </div>
+            </div>
+            <div class="sm-form-row" style="margin-top:8px;">
+              <label style="font-size:0.85rem;">Cele kopii</label>
+              <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                <label style="font-weight:normal;cursor:pointer;font-size:0.85rem;"><input type="checkbox" id="setup-backup-local" checked> Lokalnie</label>
+                <label style="font-weight:normal;cursor:pointer;font-size:0.85rem;"><input type="checkbox" id="setup-backup-ftp"> FTP</label>
+                <label style="font-weight:normal;cursor:pointer;font-size:0.85rem;"><input type="checkbox" id="setup-backup-smb"> SMB</label>
+                <label style="font-weight:normal;cursor:pointer;font-size:0.85rem;"><input type="checkbox" id="setup-backup-email"> Email</label>
+              </div>
+            </div>
+            <p class="sm-text-muted" style="font-size:0.8rem;margin-top:6px;">Szczegoly FTP/SMB/Email mozesz skonfigurowac pozniej w ustawieniach kopii zapasowej.</p>
           </div>
         </div>
       </div>
@@ -663,21 +724,46 @@ async function showSetupWizard() {
   `;
 
   modal.classList.add('sm-modal--open');
+
+  // Toggle backup details visibility
+  const backupCb = document.getElementById('setup-backup-enabled');
+  const backupDetails = document.getElementById('setup-backup-details');
+  if (backupCb && backupDetails) {
+    backupCb.addEventListener('change', () => {
+      backupDetails.style.display = backupCb.checked ? '' : 'none';
+    });
+  }
+}
+
+function setupCopyHours(target) {
+  const srcDay = document.getElementById('setup-copy-src').value;
+  const srcOpen = document.querySelector('.setup-hour-open[data-day="' + srcDay + '"]')?.value || '09:00';
+  const srcClose = document.querySelector('.setup-hour-close[data-day="' + srcDay + '"]')?.value || '20:00';
+  const srcActive = document.querySelector('.setup-hour-active[data-day="' + srcDay + '"]')?.checked || false;
+
+  let days;
+  if (target === 'all') days = [0, 1, 2, 3, 4, 5, 6];
+  else if (target === 'weekdays') days = [1, 2, 3, 4, 5];
+  else if (target === 'weekend') days = [0, 6];
+  else return;
+
+  for (const d of days) {
+    if (String(d) === srcDay) continue;
+    const openEl = document.querySelector('.setup-hour-open[data-day="' + d + '"]');
+    const closeEl = document.querySelector('.setup-hour-close[data-day="' + d + '"]');
+    const activeEl = document.querySelector('.setup-hour-active[data-day="' + d + '"]');
+    if (openEl) openEl.value = srcOpen;
+    if (closeEl) closeEl.value = srcClose;
+    if (activeEl) activeEl.checked = srcActive;
+  }
 }
 
 async function submitSetupWizard() {
   const storeName = document.getElementById('setup-store-name')?.value?.trim() || '';
-  const openTime = document.getElementById('setup-open-time')?.value || '09:00';
-  const closeTime = document.getElementById('setup-close-time')?.value || '20:00';
   const volume = parseInt(document.getElementById('setup-volume')?.value || '50');
   const autoPlay = document.getElementById('setup-auto-play')?.checked || false;
   const autoStop = document.getElementById('setup-auto-stop')?.checked || false;
   const ttsEngine = document.getElementById('setup-tts')?.value || 'google';
-
-  // Collect working days
-  const dayCheckboxes = document.querySelectorAll('#setup-days input[type="checkbox"]');
-  const workDays = [];
-  dayCheckboxes.forEach(cb => { if (cb.checked) workDays.push(parseInt(cb.value)); });
 
   const statusEl = document.getElementById('setup-status');
   statusEl.textContent = 'Zapisywanie...';
@@ -694,17 +780,39 @@ async function submitSetupWizard() {
       setup_completed: true,
     });
 
-    // Save store hours for working days
-    const dayNames = { 0: 'sunday', 1: 'monday', 2: 'tuesday', 3: 'wednesday', 4: 'thursday', 5: 'friday', 6: 'saturday' };
-    const hours = {};
+    // Save store hours per day (API expects { hours: [{ day_of_week, open_time, close_time, is_closed }] })
+    const hoursArr = [];
     for (let d = 0; d < 7; d++) {
-      if (workDays.includes(d)) {
-        hours[dayNames[d]] = { open: openTime, close: closeTime, closed: false };
-      } else {
-        hours[dayNames[d]] = { open: '00:00', close: '00:00', closed: true };
-      }
+      const active = document.querySelector('.setup-hour-active[data-day="' + d + '"]');
+      const openEl = document.querySelector('.setup-hour-open[data-day="' + d + '"]');
+      const closeEl = document.querySelector('.setup-hour-close[data-day="' + d + '"]');
+      hoursArr.push({
+        day_of_week: d,
+        open_time: openEl?.value || '09:00',
+        close_time: closeEl?.value || '20:00',
+        is_closed: !(active && active.checked),
+      });
     }
-    await API.put('/schedule/hours', hours);
+    await API.put('/schedule/hours', { hours: hoursArr });
+
+    // Save backup settings if enabled
+    const backupEnabled = document.getElementById('setup-backup-enabled')?.checked || false;
+    if (backupEnabled) {
+      const destinations = [];
+      if (document.getElementById('setup-backup-local')?.checked) destinations.push('local');
+      if (document.getElementById('setup-backup-ftp')?.checked) destinations.push('ftp');
+      if (document.getElementById('setup-backup-smb')?.checked) destinations.push('smb');
+      if (document.getElementById('setup-backup-email')?.checked) destinations.push('email');
+      try {
+        await API.put('/backup/settings', {
+          backup_enabled: true,
+          backup_day: parseInt(document.getElementById('setup-backup-day')?.value || '0'),
+          backup_hour: document.getElementById('setup-backup-hour')?.value || '03:00',
+          backup_keep: parseInt(document.getElementById('setup-backup-keep')?.value || '4'),
+          backup_destinations: destinations.length > 0 ? destinations : ['local'],
+        });
+      } catch (e) { console.warn('Backup settings save failed:', e.message); }
+    }
 
     // Create additional users
     for (const u of _setupUsers) {
