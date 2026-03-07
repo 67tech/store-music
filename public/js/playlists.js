@@ -713,6 +713,7 @@ async function loadTracks() {
       <td>${(track.playlists || []).map(p => `<span class="sm-tag">${esc(p.name)}</span>`).join(' ') || '<span class="sm-text-muted">-</span>'}</td>
       <td>${formatTime(track.duration)}</td>
       <td>
+        <button onclick="previewTrack(${track.id}, this)" class="sm-btn sm-btn--small" title="Odsluchaj">&#9654;</button>
         <button onclick="addToPlaylistPrompt(${track.id})" class="sm-btn sm-btn--small">+ Playlista</button>
         <button onclick="deleteTrack(${track.id})" class="sm-btn sm-btn--danger sm-btn--small">&#10005;</button>
       </td>
@@ -1132,6 +1133,56 @@ async function deleteTrack(id) {
   if (!await smConfirm('Usunąć utwór?')) return;
   await API.del(`/tracks/${id}`);
   await loadTracks();
+}
+
+// --- Track preview (in-browser audio playback) ---
+let _previewAudio = null;
+let _previewTrackId = null;
+
+function previewTrack(trackId, btn) {
+  // If same track is playing, stop it
+  if (_previewAudio && _previewTrackId === trackId) {
+    _previewAudio.pause();
+    _previewAudio = null;
+    _previewTrackId = null;
+    btn.innerHTML = '&#9654;';
+    btn.title = 'Odsluchaj';
+    return;
+  }
+
+  // Stop any previous preview
+  if (_previewAudio) {
+    _previewAudio.pause();
+    _previewAudio = null;
+    // Reset previous button
+    const prevBtn = document.querySelector('.sm-btn--previewing');
+    if (prevBtn) {
+      prevBtn.innerHTML = '&#9654;';
+      prevBtn.title = 'Odsluchaj';
+      prevBtn.classList.remove('sm-btn--previewing');
+    }
+  }
+
+  _previewAudio = new Audio(`/api/tracks/${trackId}/stream`);
+  _previewTrackId = trackId;
+  btn.innerHTML = '&#9724;';
+  btn.title = 'Zatrzymaj';
+  btn.classList.add('sm-btn--previewing');
+
+  _previewAudio.play().catch(() => {
+    btn.innerHTML = '&#9654;';
+    btn.classList.remove('sm-btn--previewing');
+    _previewAudio = null;
+    _previewTrackId = null;
+  });
+
+  _previewAudio.onended = () => {
+    btn.innerHTML = '&#9654;';
+    btn.title = 'Odsluchaj';
+    btn.classList.remove('sm-btn--previewing');
+    _previewAudio = null;
+    _previewTrackId = null;
+  };
 }
 
 function esc(str) {

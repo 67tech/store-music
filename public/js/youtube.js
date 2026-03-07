@@ -2,7 +2,6 @@ let ytTracks = [];
 let ytDownloadId = null;
 
 async function initYoutube() {
-  // Populate playlist select
   try {
     const playlists = await API.get('/playlists');
     const sel = document.getElementById('yt-playlist-select');
@@ -73,7 +72,7 @@ async function ytStartDownload() {
 
   const selected = [];
   document.querySelectorAll('.yt-track-cb:checked').forEach(cb => {
-    selected.push(parseInt(cb.dataset.index) + 1); // yt-dlp uses 1-based index
+    selected.push(parseInt(cb.dataset.index) + 1);
   });
 
   if (selected.length === 0) {
@@ -83,6 +82,7 @@ async function ytStartDownload() {
 
   const playlistId = document.getElementById('yt-playlist-select').value || undefined;
   const status = document.getElementById('yt-status');
+  const tracksDiv = document.getElementById('yt-tracks');
 
   try {
     const data = await API.post('/youtube/download', {
@@ -92,9 +92,23 @@ async function ytStartDownload() {
     });
 
     ytDownloadId = data.downloadId;
-    status.innerHTML = '<span style="color: var(--sm-primary);">Pobieranie rozpoczete...</span>';
 
-    // Poll for progress
+    // Show progress bar UI
+    status.innerHTML = '';
+    tracksDiv.innerHTML = `
+      <div class="sm-yt-progress">
+        <div class="sm-yt-progress-header">
+          <span id="yt-dl-phase">Rozpoczynanie pobierania...</span>
+          <span id="yt-dl-counter">${selected.length} utwor(ow)</span>
+        </div>
+        <div class="sm-yt-progress-bar-wrap">
+          <div class="sm-yt-progress-bar" id="yt-dl-bar" style="width: 0%"></div>
+        </div>
+        <div id="yt-dl-title" class="sm-yt-progress-title"></div>
+        <div id="yt-dl-tracks" class="sm-yt-progress-done"></div>
+      </div>
+    `;
+
     ytPollProgress();
   } catch (err) {
     status.innerHTML = `<span style="color: var(--sm-danger);">Blad: ${esc(err.message)}</span>`;
@@ -104,24 +118,88 @@ async function ytStartDownload() {
 async function ytPollProgress() {
   if (!ytDownloadId) return;
 
-  const status = document.getElementById('yt-status');
-
   try {
-    const data = await API.get(`/youtube/download/${ytDownloadId}`);
+    const d = await API.get(`/youtube/download/${ytDownloadId}`);
 
-    if (data.status === 'downloading') {
-      const pct = data.currentProgress ? ` (${Math.round(data.currentProgress)}%)` : '';
-      status.innerHTML = `<span style="color: var(--sm-primary);">Pobieranie${pct}... Pobrano: ${data.completed} utworow</span>`;
-      setTimeout(ytPollProgress, 2000);
-    } else if (data.status === 'completed') {
-      status.innerHTML = `<span style="color: var(--sm-primary);">Pobrano ${data.completed} utworow!</span>`;
-      ytDownloadId = null;
-    } else if (data.status === 'completed_with_errors') {
-      status.innerHTML = `<span style="color: var(--sm-warning);">Pobrano ${data.completed} utworow (z bledami)</span>`;
-      ytDownloadId = null;
+    const bar = document.getElementById('yt-dl-bar');
+    const phase = document.getElementById('yt-dl-phase');
+    const counter = document.getElementById('yt-dl-counter');
+    const title = document.getElementById('yt-dl-title');
+    const doneList = document.getElementById('yt-dl-tracks');
+
+    if (!bar) { setTimeout(ytPollProgress, 2000); return; }
+
+    if (d.status === 'downloading') {
+      // Calculate overall progress
+      const itemsDone = d.completed || 0;
+      const totalItems = d.total || 1;
+      const filePct = d.currentProgress || 0;
+      // Overall = (completed items + current file progress) / total
+      const overallPct = Math.min(99, ((itemsDone + filePct / 100) / totalItems) * 100);
+
+      bar.style.width = overallPct + '%';
+
+      // Phase label
+      if (d.phase === 'converting') {
+        phase.textContent = 'Konwersja na MP3...';
+        bar.classList.add('sm-yt-progress-bar--converting');
+      } else {
+        phase.textContent = 'Pobieranie...';
+        bar.classList.remove('sm-yt-progress-bar--converting');
+      }
+
+      // Counter
+      if (totalItems > 1) {
+        const current = d.currentItem || (itemsDone + 1);
+        counter.textContent = `${current} / ${totalItems}`;
+      } else {
+        counter.textContent = filePct > 0 ? `${Math.round(filePct)}%` : '';
+      }
+
+      // Current title
+      if (d.currentTitle) {
+        title.textContent = d.currentTitle;
+      }
+
+      // Done tracks list
+      if (d.tracks && d.tracks.length > 0) {
+        doneList.innerHTML = d.tracks.map(t =>
+          `<div class="sm-yt-progress-track-done">&#10003; ${esc(t.title)}</div>`
+        ).join('');
+      }
+
+      setTimeout(ytPollProgress, 1500);
     } else {
-      status.innerHTML = `<span style="color: var(--sm-danger);">Pobieranie nie powiodlo sie</span>`;
+      // Finished
+      bar.style.width = '100%';
+
+      if (d.status === 'completed' && d.completed > 0) {
+        bar.classList.add('sm-yt-progress-bar--done');
+        phase.textContent = 'Gotowe!';
+        counter.textContent = `${d.completed} utwor(ow)`;
+        title.textContent = '';
+      } else if (d.status === 'completed_with_errors') {
+        bar.classList.add('sm-yt-progress-bar--warning');
+        phase.textContent = `Pobrano ${d.completed} (z bledami)`;
+        counter.textContent = '';
+        title.textContent = d.errors.length ? d.errors[0] : '';
+      } else {
+        bar.classList.add('sm-yt-progress-bar--error');
+        phase.textContent = 'Pobieranie nie powiodlo sie';
+        counter.textContent = '';
+        title.textContent = d.errors.length ? d.errors[0] : '';
+      }
+
+      if (d.tracks && d.tracks.length > 0) {
+        doneList.innerHTML = d.tracks.map(t =>
+          `<div class="sm-yt-progress-track-done">&#10003; ${esc(t.title)}</div>`
+        ).join('');
+      }
+
       ytDownloadId = null;
+
+      // Refresh tracks list
+      if (typeof loadTracks === 'function') loadTracks();
     }
   } catch {
     setTimeout(ytPollProgress, 3000);

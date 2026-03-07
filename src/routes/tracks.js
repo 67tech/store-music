@@ -106,6 +106,35 @@ router.post('/:id/autotag', requirePermission('track_upload'), async (req, res) 
   res.json({ updated: true, track: updated });
 });
 
+// Stream track audio (for browser preview)
+router.get('/:id/stream', (req, res) => {
+  const track = playlistService.getTrack(parseInt(req.params.id));
+  if (!track || !track.filepath) return res.status(404).json({ error: 'Track not found' });
+  if (!fs.existsSync(track.filepath)) return res.status(404).json({ error: 'File not found' });
+
+  const stat = fs.statSync(track.filepath);
+  const range = req.headers.range;
+
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': end - start + 1,
+      'Content-Type': track.mimetype || 'audio/mpeg',
+    });
+    fs.createReadStream(track.filepath, { start, end }).pipe(res);
+  } else {
+    res.writeHead(200, {
+      'Content-Length': stat.size,
+      'Content-Type': track.mimetype || 'audio/mpeg',
+    });
+    fs.createReadStream(track.filepath).pipe(res);
+  }
+});
+
 // Update track metadata
 router.put('/:id', (req, res) => {
   const track = playlistService.updateTrack(parseInt(req.params.id), req.body);

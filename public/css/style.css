@@ -1597,6 +1597,71 @@ input[type="file"] { display: none; }
   opacity: 0.5;
 }
 
+/* ===== Track Preview ===== */
+.sm-btn--previewing {
+  background: var(--sm-primary) !important;
+  color: #fff !important;
+}
+
+/* ===== YouTube Progress Bar ===== */
+.sm-yt-progress {
+  background: var(--sm-card);
+  border: 1px solid var(--sm-border);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 8px 0;
+}
+.sm-yt-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.sm-yt-progress-bar-wrap {
+  width: 100%;
+  height: 8px;
+  background: var(--sm-border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.sm-yt-progress-bar {
+  height: 100%;
+  background: var(--sm-primary);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+.sm-yt-progress-bar--converting {
+  background: #f59e0b;
+  animation: yt-pulse 1s ease-in-out infinite alternate;
+}
+.sm-yt-progress-bar--done { background: #16a34a; }
+.sm-yt-progress-bar--warning { background: #f59e0b; }
+.sm-yt-progress-bar--error { background: #dc2626; }
+@keyframes yt-pulse {
+  from { opacity: 0.7; }
+  to { opacity: 1; }
+}
+.sm-yt-progress-title {
+  font-size: 0.8rem;
+  color: var(--sm-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 6px;
+}
+.sm-yt-progress-done {
+  max-height: 150px;
+  overflow-y: auto;
+}
+.sm-yt-progress-track-done {
+  font-size: 0.8rem;
+  color: #16a34a;
+  padding: 2px 0;
+}
+
 /* ===== Footer ===== */
 .sm-footer {
   text-align: center;

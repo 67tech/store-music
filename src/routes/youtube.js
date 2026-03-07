@@ -103,15 +103,32 @@ router.post('/download', requirePermission('track_upload'), async (req, res) => 
 
       proc.stderr.on('data', (data) => {
         const msg = data.toString();
-        // Parse progress from stderr
+        // Parse download % progress
         const dlMatch = msg.match(/\[download\]\s+(\d+\.?\d*)%/);
         if (dlMatch) {
           progress.currentProgress = parseFloat(dlMatch[1]);
         }
-        // Count total items
+        // Count total items from playlist
         const totalMatch = msg.match(/Downloading (\d+) /);
         if (totalMatch) {
           progress.total = parseInt(totalMatch[1]);
+        }
+        // Track which item is being downloaded (e.g. "Downloading item 2 of 5")
+        const itemMatch = msg.match(/Downloading item (\d+) of (\d+)/);
+        if (itemMatch) {
+          progress.currentItem = parseInt(itemMatch[1]);
+          progress.total = parseInt(itemMatch[2]);
+        }
+        // Detect current title
+        const destMatch = msg.match(/\[download\] Destination:\s*(.+)/);
+        if (destMatch) {
+          progress.currentTitle = path.parse(destMatch[1].trim()).name;
+        }
+        // Detect phase: extract/convert
+        if (msg.includes('[ExtractAudio]') || msg.includes('Post-process')) {
+          progress.phase = 'converting';
+        } else if (msg.includes('[download]') && dlMatch) {
+          progress.phase = 'downloading';
         }
         // Log errors
         if (msg.includes('ERROR')) {
