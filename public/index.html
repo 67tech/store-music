@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Store Music Manager</title>
-  <link rel="stylesheet" href="/css/style.css?v=20260307z4">
+  <link rel="stylesheet" href="/css/style.css?v=20260307z5">
 </head>
 <body>
   <div class="sm-app">
@@ -362,6 +362,15 @@
               <div class="sm-card-header"><h2>TTS (Text-to-Speech)</h2></div>
               <div id="tts-settings" style="padding: 0 16px 16px;"></div>
             </div>
+
+            <div class="sm-card">
+              <div class="sm-card-header">
+                <h2>Kopia zapasowa</h2>
+                <button onclick="runBackupNow()" class="sm-btn sm-btn--small sm-btn--primary">Wykonaj teraz</button>
+              </div>
+              <div id="backup-settings" style="padding: 0 16px 16px;"></div>
+              <div id="backup-list" style="padding: 0 16px 16px;"></div>
+            </div>
           </div>
           <div class="sm-grid-side">
             <div class="sm-card sm-card--sticky">
@@ -419,17 +428,17 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/api.js?v=20260307z4"></script>
-  <script src="/js/player.js?v=20260307z4"></script>
-  <script src="/js/playlists.js?v=20260307z4"></script>
-  <script src="/js/schedule.js?v=20260307z4"></script>
-  <script src="/js/announcements.js?v=20260307z4"></script>
-  <script src="/js/users.js?v=20260307z4"></script>
-  <script src="/js/radio.js?v=20260307z4"></script>
-  <script src="/js/youtube.js?v=20260307z4"></script>
-  <script src="/js/calendar.js?v=20260307z4"></script>
-  <script src="/js/ads.js?v=20260307z4"></script>
-  <script src="/js/history.js?v=20260307z4"></script>
-  <script src="/js/app.js?v=20260307z4"></script>
+  <script src="/js/api.js?v=20260307z5"></script>
+  <script src="/js/player.js?v=20260307z5"></script>
+  <script src="/js/playlists.js?v=20260307z5"></script>
+  <script src="/js/schedule.js?v=20260307z5"></script>
+  <script src="/js/announcements.js?v=20260307z5"></script>
+  <script src="/js/users.js?v=20260307z5"></script>
+  <script src="/js/radio.js?v=20260307z5"></script>
+  <script src="/js/youtube.js?v=20260307z5"></script>
+  <script src="/js/calendar.js?v=20260307z5"></script>
+  <script src="/js/ads.js?v=20260307z5"></script>
+  <script src="/js/history.js?v=20260307z5"></script>
+  <script src="/js/app.js?v=20260307z5"></script>
 </body>
 </html>

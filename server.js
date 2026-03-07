@@ -103,6 +103,7 @@ io.on('connection', (socket) => {
 async function start() {
   await playerService.init();
   schedulerService.start();
+  require('./src/services/BackupService').start();
 
   server.listen(config.port, () => {
     console.log(`Store Music Manager running at http://localhost:${config.port}`);

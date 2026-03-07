@@ -260,6 +260,9 @@ async function loadSettings() {
     }
   }
 
+  // Backup settings
+  loadBackupSettings();
+
   // Info panel
   const infoContainer = document.getElementById('settings-info');
   if (infoContainer) {
@@ -510,4 +513,251 @@ async function applyMatchdays() {
   } catch (err) {
     await smAlert('Blad: ' + err.message);
   }
+}
+
+// ==================== BACKUP ====================
+
+const DAY_LABELS = ['Niedziela','Poniedzialek','Wtorek','Sroda','Czwartek','Piatek','Sobota'];
+
+async function loadBackupSettings() {
+  const container = document.getElementById('backup-settings');
+  if (!container) return;
+
+  try {
+    const s = await API.get('/backup/settings');
+
+    container.innerHTML = `
+      <div class="sm-form-row"><label><input type="checkbox" id="bk-enabled" ${s.backup_enabled ? 'checked' : ''}>
+        Automatyczna kopia zapasowa</label></div>
+
+      <div id="bk-schedule-opts" style="${s.backup_enabled ? '' : 'display:none;'}">
+        <div class="sm-form-row" style="display:flex;gap:8px;">
+          <label style="flex:1;">Dzien tygodnia:
+            <select id="bk-day" class="sm-input">
+              ${DAY_LABELS.map((d,i) => `<option value="${i}" ${Number(s.backup_day) === i ? 'selected' : ''}>${d}</option>`).join('')}
+            </select>
+          </label>
+          <label style="flex:1;">Godzina:
+            <input type="time" id="bk-hour" class="sm-input" value="${s.backup_hour || '03:00'}">
+          </label>
+          <label style="flex:1;">Ile kopii:
+            <input type="number" id="bk-keep" class="sm-input" value="${s.backup_keep || 4}" min="1" max="52">
+          </label>
+        </div>
+
+        <div class="sm-form-row"><label>Miejsce docelowe:
+          <select id="bk-dest" class="sm-input" style="max-width:200px;" onchange="backupDestChange()">
+            <option value="local" ${s.backup_destination === 'local' ? 'selected' : ''}>Lokalnie (na serwerze)</option>
+            <option value="ftp" ${s.backup_destination === 'ftp' ? 'selected' : ''}>FTP</option>
+            <option value="smb" ${s.backup_destination === 'smb' ? 'selected' : ''}>Zasob sieciowy (SMB/NFS)</option>
+            <option value="email" ${s.backup_destination === 'email' ? 'selected' : ''}>Email</option>
+          </select>
+        </label></div>
+
+        <div id="bk-ftp-opts" class="bk-dest-panel" style="display:${s.backup_destination === 'ftp' ? 'block' : 'none'}; border:1px solid var(--sm-border); border-radius:8px; padding:12px; margin:8px 0; background:var(--sm-bg-light);">
+          <h4 style="margin-bottom:8px; font-size:0.9rem;">FTP</h4>
+          <div class="sm-form-row" style="display:flex;gap:8px;">
+            <label style="flex:2;">Host: <input type="text" id="bk-ftp-host" class="sm-input" value="${esc(s.backup_ftp_host || '')}" placeholder="ftp.example.com"></label>
+            <label style="flex:1;">Port: <input type="number" id="bk-ftp-port" class="sm-input" value="${s.backup_ftp_port || 21}"></label>
+          </div>
+          <div class="sm-form-row" style="display:flex;gap:8px;">
+            <label style="flex:1;">Uzytkownik: <input type="text" id="bk-ftp-user" class="sm-input" value="${esc(s.backup_ftp_user || '')}"></label>
+            <label style="flex:1;">Haslo: <input type="password" id="bk-ftp-pass" class="sm-input" value="${esc(s.backup_ftp_pass || '')}"></label>
+          </div>
+          <div class="sm-form-row"><label>Sciezka: <input type="text" id="bk-ftp-path" class="sm-input" value="${esc(s.backup_ftp_path || '/backups')}" style="max-width:250px;"></label></div>
+          <button onclick="testBackupDest()" class="sm-btn sm-btn--small">Testuj polaczenie</button>
+        </div>
+
+        <div id="bk-smb-opts" class="bk-dest-panel" style="display:${s.backup_destination === 'smb' ? 'block' : 'none'}; border:1px solid var(--sm-border); border-radius:8px; padding:12px; margin:8px 0; background:var(--sm-bg-light);">
+          <h4 style="margin-bottom:8px; font-size:0.9rem;">Zasob sieciowy (SMB/NFS)</h4>
+          <div class="sm-form-row"><label>Adres zasobu:
+            <input type="text" id="bk-smb-share" class="sm-input" value="${esc(s.backup_smb_share || '')}" placeholder="//192.168.1.100/backup" style="max-width:350px;">
+          </label></div>
+          <div class="sm-form-row" style="display:flex;gap:8px;">
+            <label style="flex:1;">Uzytkownik: <input type="text" id="bk-smb-user" class="sm-input" value="${esc(s.backup_smb_user || '')}" placeholder="user"></label>
+            <label style="flex:1;">Haslo: <input type="password" id="bk-smb-pass" class="sm-input" value="${esc(s.backup_smb_pass || '')}"></label>
+          </div>
+          <div class="sm-form-row"><label>Domena (opcjonalnie):
+            <input type="text" id="bk-smb-domain" class="sm-input" value="${esc(s.backup_smb_domain || '')}" placeholder="WORKGROUP" style="max-width:200px;">
+          </label></div>
+          <div class="sm-form-row"><label>Sciezka docelowa na zasobie:
+            <input type="text" id="bk-smb-path" class="sm-input" value="${esc(s.backup_smb_path || '/backups')}" placeholder="/backups" style="max-width:250px;">
+          </label></div>
+          <p style="font-size:0.78rem; color:var(--sm-text-muted);">Adres w formacie //IP/nazwa_udzialu. Zasob zostanie zamontowany automatycznie.</p>
+          <button onclick="testBackupDest()" class="sm-btn sm-btn--small">Testuj polaczenie</button>
+        </div>
+
+        <div id="bk-email-opts" class="bk-dest-panel" style="display:${s.backup_destination === 'email' ? 'block' : 'none'}; border:1px solid var(--sm-border); border-radius:8px; padding:12px; margin:8px 0; background:var(--sm-bg-light);">
+          <h4 style="margin-bottom:8px; font-size:0.9rem;">Email (SMTP)</h4>
+          <div class="sm-form-row"><label>Adres odbiorcy:
+            <input type="email" id="bk-email-to" class="sm-input" value="${esc(s.backup_email_to || '')}" placeholder="admin@example.com" style="max-width:300px;">
+          </label></div>
+          <div class="sm-form-row" style="display:flex;gap:8px;">
+            <label style="flex:2;">Serwer SMTP: <input type="text" id="bk-smtp-host" class="sm-input" value="${esc(s.backup_email_smtp_host || '')}" placeholder="smtp.gmail.com"></label>
+            <label style="flex:1;">Port: <input type="number" id="bk-smtp-port" class="sm-input" value="${s.backup_email_smtp_port || 587}"></label>
+          </div>
+          <div class="sm-form-row" style="display:flex;gap:8px;">
+            <label style="flex:1;">Uzytkownik SMTP: <input type="text" id="bk-smtp-user" class="sm-input" value="${esc(s.backup_email_smtp_user || '')}"></label>
+            <label style="flex:1;">Haslo SMTP: <input type="password" id="bk-smtp-pass" class="sm-input" value="${esc(s.backup_email_smtp_pass || '')}"></label>
+          </div>
+          <div class="sm-form-row"><label><input type="checkbox" id="bk-smtp-secure" ${s.backup_email_smtp_secure ? 'checked' : ''}> SSL/TLS (port 465)</label></div>
+          <p style="font-size:0.78rem; color:var(--sm-text-muted);">Backup musi byc mniejszy niz 25MB. Wieksze kopie — uzyj FTP lub zasobu sieciowego.</p>
+          <button onclick="testBackupDest()" class="sm-btn sm-btn--small">Testuj SMTP</button>
+        </div>
+      </div>
+
+      <div id="bk-test-result" style="font-size:0.85rem; margin:8px 0;"></div>
+
+      ${s.backup_last_date ? `
+        <div style="font-size:0.82rem; color:var(--sm-text-muted); margin:8px 0; padding:8px; border-radius:6px; background:var(--sm-bg-light);">
+          Ostatni backup: ${new Date(s.backup_last_date).toLocaleString('pl-PL')}
+          ${s.backup_last_status === 'ok' ? ' — <span style="color:#22c55e;">OK</span>' : ` — <span style="color:#dc2626;">${esc(s.backup_last_status || '')}</span>`}
+          ${s.backup_last_size ? ` (${(s.backup_last_size / 1024).toFixed(0)} KB)` : ''}
+        </div>
+      ` : ''}
+
+      <button onclick="saveBackupSettings()" class="sm-btn sm-btn--primary sm-btn--small" style="margin-top:8px;">Zapisz ustawienia</button>
+    `;
+
+    document.getElementById('bk-enabled').onchange = () => {
+      document.getElementById('bk-schedule-opts').style.display = document.getElementById('bk-enabled').checked ? '' : 'none';
+    };
+
+    loadBackupList();
+  } catch (err) {
+    container.innerHTML = '<div style="color:#dc2626; padding:8px;">' + (err.message || 'Blad') + '</div>';
+  }
+}
+
+function backupDestChange() {
+  const dest = document.getElementById('bk-dest').value;
+  document.querySelectorAll('.bk-dest-panel').forEach(function(el) { el.style.display = 'none'; });
+  const panel = document.getElementById('bk-' + dest + '-opts');
+  if (panel) panel.style.display = 'block';
+}
+
+async function saveBackupSettings() {
+  const data = {
+    backup_enabled: document.getElementById('bk-enabled').checked,
+    backup_day: parseInt(document.getElementById('bk-day')?.value || 0),
+    backup_hour: document.getElementById('bk-hour')?.value || '03:00',
+    backup_keep: parseInt(document.getElementById('bk-keep')?.value || 4),
+    backup_destination: document.getElementById('bk-dest')?.value || 'local',
+    backup_ftp_host: document.getElementById('bk-ftp-host')?.value || '',
+    backup_ftp_port: parseInt(document.getElementById('bk-ftp-port')?.value || 21),
+    backup_ftp_user: document.getElementById('bk-ftp-user')?.value || '',
+    backup_ftp_pass: document.getElementById('bk-ftp-pass')?.value || '',
+    backup_ftp_path: document.getElementById('bk-ftp-path')?.value || '/backups',
+    backup_smb_share: document.getElementById('bk-smb-share')?.value || '',
+    backup_smb_user: document.getElementById('bk-smb-user')?.value || '',
+    backup_smb_pass: document.getElementById('bk-smb-pass')?.value || '',
+    backup_smb_domain: document.getElementById('bk-smb-domain')?.value || '',
+    backup_smb_path: document.getElementById('bk-smb-path')?.value || '/backups',
+    backup_email_to: document.getElementById('bk-email-to')?.value || '',
+    backup_email_smtp_host: document.getElementById('bk-smtp-host')?.value || '',
+    backup_email_smtp_port: parseInt(document.getElementById('bk-smtp-port')?.value || 587),
+    backup_email_smtp_user: document.getElementById('bk-smtp-user')?.value || '',
+    backup_email_smtp_pass: document.getElementById('bk-smtp-pass')?.value || '',
+    backup_email_smtp_secure: document.getElementById('bk-smtp-secure')?.checked || false,
+  };
+
+  try {
+    await API.put('/backup/settings', data);
+    await smAlert('Zapisano ustawienia kopii zapasowej!');
+    loadBackupSettings();
+  } catch (err) {
+    await smAlert('Blad: ' + err.message);
+  }
+}
+
+async function testBackupDest() {
+  const dest = document.getElementById('bk-dest').value;
+  const resultEl = document.getElementById('bk-test-result');
+  resultEl.textContent = 'Testowanie...';
+  resultEl.style.color = 'var(--sm-text)';
+
+  const body = { destination: dest };
+  if (dest === 'ftp') {
+    body.ftp_host = document.getElementById('bk-ftp-host').value;
+    body.ftp_port = parseInt(document.getElementById('bk-ftp-port').value || 21);
+    body.ftp_user = document.getElementById('bk-ftp-user').value;
+    body.ftp_pass = document.getElementById('bk-ftp-pass').value;
+    body.ftp_path = document.getElementById('bk-ftp-path').value;
+  } else if (dest === 'smb') {
+    body.smb_share = document.getElementById('bk-smb-share').value;
+    body.smb_user = document.getElementById('bk-smb-user').value;
+    body.smb_pass = document.getElementById('bk-smb-pass').value;
+    body.smb_domain = document.getElementById('bk-smb-domain').value;
+    body.smb_path = document.getElementById('bk-smb-path').value;
+  } else if (dest === 'email') {
+    body.smtp_host = document.getElementById('bk-smtp-host').value;
+    body.smtp_port = parseInt(document.getElementById('bk-smtp-port').value || 587);
+    body.smtp_user = document.getElementById('bk-smtp-user').value;
+    body.smtp_pass = document.getElementById('bk-smtp-pass').value;
+    body.smtp_secure = document.getElementById('bk-smtp-secure').checked;
+  }
+
+  try {
+    const res = await API.post('/backup/test', body);
+    resultEl.textContent = res.message;
+    resultEl.style.color = '#22c55e';
+  } catch (err) {
+    resultEl.textContent = 'Blad: ' + err.message;
+    resultEl.style.color = '#dc2626';
+  }
+}
+
+async function runBackupNow() {
+  if (!await smConfirm('Wykonac kopie zapasowa teraz?')) return;
+  const btn = document.querySelector('[onclick="runBackupNow()"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Tworzenie...'; }
+
+  try {
+    const res = await API.post('/backup/run');
+    await smAlert('Kopia utworzona: ' + res.filename + ' (' + (res.size / 1024).toFixed(0) + ' KB)');
+    loadBackupSettings();
+  } catch (err) {
+    await smAlert('Blad: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Wykonaj teraz'; }
+  }
+}
+
+async function loadBackupList() {
+  const container = document.getElementById('backup-list');
+  if (!container) return;
+
+  try {
+    const backups = await API.get('/backup/list');
+    if (backups.length === 0) {
+      container.innerHTML = '<p class="sm-empty" style="padding:4px 0;">Brak kopii zapasowych</p>';
+      return;
+    }
+
+    let html = '<h4 style="font-size:0.9rem; margin-bottom:8px;">Kopie lokalne</h4>';
+    html += '<table class="sm-table"><thead><tr><th>Plik</th><th>Rozmiar</th><th>Data</th><th>Akcje</th></tr></thead><tbody>';
+    for (const b of backups) {
+      const sizeKb = (b.size / 1024).toFixed(0);
+      const date = new Date(b.date).toLocaleString('pl-PL');
+      html += '<tr>' +
+        '<td style="font-size:0.82rem;">' + esc(b.filename) + '</td>' +
+        '<td>' + sizeKb + ' KB</td>' +
+        '<td style="font-size:0.82rem;">' + date + '</td>' +
+        '<td>' +
+          '<a href="/api/backup/download/' + encodeURIComponent(b.filename) + '" class="sm-btn sm-btn--small" download>Pobierz</a> ' +
+          '<button onclick="deleteBackup(\'' + esc(b.filename) + '\')" class="sm-btn sm-btn--danger sm-btn--small">Usun</button>' +
+        '</td>' +
+      '</tr>';
+    }
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = '<div style="color:#dc2626; font-size:0.85rem;">' + (err.message || 'Blad') + '</div>';
+  }
+}
+
+async function deleteBackup(filename) {
+  if (!await smConfirm('Usunac kopie ' + filename + '?')) return;
+  await API.del('/backup/' + encodeURIComponent(filename));
+  loadBackupList();
 }
