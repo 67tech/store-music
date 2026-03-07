@@ -110,6 +110,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initHistory();
   loadSettings(); // Settings tab — loads playback + TTS config
 
+  // First-run setup wizard
+  checkFirstRun();
+
   // Horizontal timeline + current playlist: update from Socket.IO player state (real-time)
   // Use RAF throttle to prevent multiple updates per frame (reduces blinking)
   let _pendingPlayerState = null;
@@ -549,4 +552,227 @@ async function restartServer() {
   } catch {
     setTimeout(() => window.location.reload(), 3000);
   }
+}
+
+// --- First-run setup wizard ---
+
+async function checkFirstRun() {
+  try {
+    const settings = await API.get('/schedule/settings');
+    if (settings.setup_completed) return;
+    showSetupWizard();
+  } catch {}
+}
+
+async function showSetupWizard() {
+  const modal = document.getElementById('modal');
+  const modalBody = document.getElementById('modal-body');
+
+  modalBody.innerHTML = `
+    <div id="setup-wizard">
+      <h2 style="margin-bottom:4px;">Witaj w Store Music Manager!</h2>
+      <p class="sm-text-muted" style="margin-bottom:16px;">Skonfiguruj podstawowe ustawienia, aby zaczac.</p>
+
+      <div id="setup-steps">
+        <div id="setup-step-1" class="setup-step">
+          <h3>1. Nazwa sklepu / lokalu</h3>
+          <div class="sm-form-row">
+            <input type="text" id="setup-store-name" class="sm-input" placeholder="np. Sklep Sportowy Arena">
+          </div>
+        </div>
+
+        <div id="setup-step-2" class="setup-step" style="margin-top:16px;">
+          <h3>2. Godziny pracy</h3>
+          <div style="display:flex;gap:12px;">
+            <div class="sm-form-row" style="flex:1;">
+              <label>Otwarcie</label>
+              <input type="time" id="setup-open-time" class="sm-input" value="09:00">
+            </div>
+            <div class="sm-form-row" style="flex:1;">
+              <label>Zamkniecie</label>
+              <input type="time" id="setup-close-time" class="sm-input" value="20:00">
+            </div>
+          </div>
+          <div class="sm-form-row" style="margin-top:8px;">
+            <label>Dni pracy</label>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;" id="setup-days">
+              <label style="font-weight:normal;cursor:pointer;"><input type="checkbox" value="1" checked> Pon</label>
+              <label style="font-weight:normal;cursor:pointer;"><input type="checkbox" value="2" checked> Wt</label>
+              <label style="font-weight:normal;cursor:pointer;"><input type="checkbox" value="3" checked> Sr</label>
+              <label style="font-weight:normal;cursor:pointer;"><input type="checkbox" value="4" checked> Czw</label>
+              <label style="font-weight:normal;cursor:pointer;"><input type="checkbox" value="5" checked> Pt</label>
+              <label style="font-weight:normal;cursor:pointer;"><input type="checkbox" value="6" checked> Sob</label>
+              <label style="font-weight:normal;cursor:pointer;"><input type="checkbox" value="0"> Ndz</label>
+            </div>
+          </div>
+        </div>
+
+        <div id="setup-step-3" class="setup-step" style="margin-top:16px;">
+          <h3>3. Glosnosc i odtwarzanie</h3>
+          <div class="sm-form-row">
+            <label>Glosnosc domyslna: <span id="setup-vol-val">50</span>%</label>
+            <input type="range" id="setup-volume" min="0" max="100" value="50" class="sm-input"
+              oninput="document.getElementById('setup-vol-val').textContent=this.value">
+          </div>
+          <div class="sm-form-row" style="margin-top:8px;">
+            <label style="font-weight:normal;cursor:pointer;">
+              <input type="checkbox" id="setup-auto-play" checked> Automatycznie rozpocznij odtwarzanie po otwarciu
+            </label>
+          </div>
+          <div class="sm-form-row">
+            <label style="font-weight:normal;cursor:pointer;">
+              <input type="checkbox" id="setup-auto-stop" checked> Automatycznie zatrzymaj po zamknieciu
+            </label>
+          </div>
+        </div>
+
+        <div id="setup-step-4" class="setup-step" style="margin-top:16px;">
+          <h3>4. Uzytkownicy</h3>
+          <p class="sm-text-muted" style="font-size:0.85rem;margin-bottom:8px;">Konto admin juz istnieje. Dodaj dodatkowych uzytkownikow (opcjonalnie).</p>
+          <div id="setup-users-list"></div>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:8px;">
+            <input type="text" id="setup-new-user" class="sm-input" placeholder="Login" style="flex:1;">
+            <input type="password" id="setup-new-pass" class="sm-input" placeholder="Haslo" style="flex:1;">
+            <select id="setup-new-role" class="sm-input" style="flex:1;">
+              <option value="operator">Operator</option>
+              <option value="admin">Administrator</option>
+            </select>
+            <button onclick="setupAddUser()" class="sm-btn sm-btn--small">Dodaj</button>
+          </div>
+        </div>
+
+        <div id="setup-step-5" class="setup-step" style="margin-top:16px;">
+          <h3>5. Silnik TTS (opcjonalnie)</h3>
+          <div class="sm-form-row">
+            <select id="setup-tts" class="sm-input">
+              <option value="google">Google TTS (online, darmowy)</option>
+              <option value="edge">Edge TTS (online, lepsza jakosc)</option>
+              <option value="elevenlabs">ElevenLabs (online, premium)</option>
+              <option value="">Bez TTS</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div id="setup-status" style="margin-top:8px;color:#dc2626;font-size:0.85rem;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+        <button onclick="skipSetupWizard()" class="sm-btn" style="background:var(--sm-border);color:var(--sm-text);">Pomin</button>
+        <button onclick="submitSetupWizard()" class="sm-btn sm-btn--primary">Zapisz i rozpocznij</button>
+      </div>
+    </div>
+  `;
+
+  modal.classList.add('sm-modal--open');
+}
+
+async function submitSetupWizard() {
+  const storeName = document.getElementById('setup-store-name')?.value?.trim() || '';
+  const openTime = document.getElementById('setup-open-time')?.value || '09:00';
+  const closeTime = document.getElementById('setup-close-time')?.value || '20:00';
+  const volume = parseInt(document.getElementById('setup-volume')?.value || '50');
+  const autoPlay = document.getElementById('setup-auto-play')?.checked || false;
+  const autoStop = document.getElementById('setup-auto-stop')?.checked || false;
+  const ttsEngine = document.getElementById('setup-tts')?.value || 'google';
+
+  // Collect working days
+  const dayCheckboxes = document.querySelectorAll('#setup-days input[type="checkbox"]');
+  const workDays = [];
+  dayCheckboxes.forEach(cb => { if (cb.checked) workDays.push(parseInt(cb.value)); });
+
+  const statusEl = document.getElementById('setup-status');
+  statusEl.textContent = 'Zapisywanie...';
+  statusEl.style.color = 'var(--sm-text)';
+
+  try {
+    // Save settings
+    await API.put('/schedule/settings', {
+      volume: volume,
+      autoPlayOnOpen: autoPlay,
+      autoStopOnClose: autoStop,
+      ttsEngine: ttsEngine,
+      storeName: storeName,
+      setup_completed: true,
+    });
+
+    // Save store hours for working days
+    const dayNames = { 0: 'sunday', 1: 'monday', 2: 'tuesday', 3: 'wednesday', 4: 'thursday', 5: 'friday', 6: 'saturday' };
+    const hours = {};
+    for (let d = 0; d < 7; d++) {
+      if (workDays.includes(d)) {
+        hours[dayNames[d]] = { open: openTime, close: closeTime, closed: false };
+      } else {
+        hours[dayNames[d]] = { open: '00:00', close: '00:00', closed: true };
+      }
+    }
+    await API.put('/schedule/hours', hours);
+
+    // Create additional users
+    for (const u of _setupUsers) {
+      try {
+        // Get role id - try to find existing or use null
+        const roles = await API.get('/users/roles');
+        let roleId = null;
+        if (u.role === 'admin') {
+          const adminRole = roles.find(r => r.name === 'admin' || r.name === 'Administrator');
+          if (adminRole) roleId = adminRole.id;
+        } else {
+          const opRole = roles.find(r => r.name === 'operator' || r.name === 'Operator');
+          if (opRole) roleId = opRole.id;
+        }
+        await API.post('/users', { username: u.username, password: u.password, role_id: roleId });
+      } catch (e) { console.warn('User create failed:', u.username, e.message); }
+    }
+
+    document.getElementById('modal').classList.remove('sm-modal--open');
+
+    // Reload settings
+    if (typeof loadSettings === 'function') loadSettings();
+    if (typeof loadStoreHours === 'function') loadStoreHours();
+    if (typeof loadTimeline === 'function') loadTimeline();
+
+    await smAlert('Konfiguracja zapisana! Mozesz teraz dodac muzke i utworzyc pierwsza playliste.');
+  } catch (err) {
+    statusEl.textContent = 'Blad: ' + err.message;
+    statusEl.style.color = '#dc2626';
+  }
+}
+
+let _setupUsers = [];
+
+function setupAddUser() {
+  const login = document.getElementById('setup-new-user')?.value?.trim();
+  const pass = document.getElementById('setup-new-pass')?.value?.trim();
+  const role = document.getElementById('setup-new-role')?.value || 'operator';
+  if (!login || !pass) return;
+
+  _setupUsers.push({ username: login, password: pass, role });
+  document.getElementById('setup-new-user').value = '';
+  document.getElementById('setup-new-pass').value = '';
+
+  const list = document.getElementById('setup-users-list');
+  if (list) {
+    list.innerHTML = _setupUsers.map((u, i) =>
+      '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:0.85rem;">' +
+        '<span style="flex:1;"><strong>' + esc(u.username) + '</strong> — ' + u.role + '</span>' +
+        '<button onclick="_setupUsers.splice(' + i + ',1);setupAddUser.renderList()" class="sm-btn sm-btn--danger sm-btn--small">&#10005;</button>' +
+      '</div>'
+    ).join('');
+  }
+}
+setupAddUser.renderList = function() {
+  const list = document.getElementById('setup-users-list');
+  if (!list) return;
+  list.innerHTML = _setupUsers.map((u, i) =>
+    '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:0.85rem;">' +
+      '<span style="flex:1;"><strong>' + esc(u.username) + '</strong> — ' + u.role + '</span>' +
+      '<button onclick="_setupUsers.splice(' + i + ',1);setupAddUser.renderList()" class="sm-btn sm-btn--danger sm-btn--small">&#10005;</button>' +
+    '</div>'
+  ).join('');
+};
+
+async function skipSetupWizard() {
+  try {
+    await API.put('/schedule/settings', { setup_completed: true });
+  } catch {}
+  document.getElementById('modal').classList.remove('sm-modal--open');
 }

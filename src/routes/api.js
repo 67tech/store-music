@@ -10,6 +10,8 @@ router.use('/users', require('./users'));
 router.use('/youtube', require('./youtube'));
 router.use('/radio', require('./radio'));
 router.use('/ads', require('./ads'));
+router.use('/ad-packs', require('./adPacks'));
+router.use('/announcement-packs', require('./announcementPacks'));
 router.use('/backup', require('./backup'));
 
 module.exports = router;

@@ -297,6 +297,56 @@ function initSchema() {
     db.exec('ALTER TABLE playlist_tracks ADD COLUMN one_shot INTEGER NOT NULL DEFAULT 0');
   }
 
+  // Ad packs
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ad_packs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS ad_pack_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pack_id INTEGER NOT NULL,
+      ad_id INTEGER NOT NULL,
+      position INTEGER DEFAULT 0,
+      FOREIGN KEY (pack_id) REFERENCES ad_packs(id) ON DELETE CASCADE,
+      FOREIGN KEY (ad_id) REFERENCES ads(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS ad_pack_assignments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pack_id INTEGER NOT NULL,
+      assign_type TEXT NOT NULL DEFAULT 'global',
+      target_id INTEGER,
+      target_date TEXT,
+      FOREIGN KEY (pack_id) REFERENCES ad_packs(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Announcement packs
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS announcement_packs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS announcement_pack_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pack_id INTEGER NOT NULL,
+      announcement_id INTEGER NOT NULL,
+      position INTEGER DEFAULT 0,
+      FOREIGN KEY (pack_id) REFERENCES announcement_packs(id) ON DELETE CASCADE,
+      FOREIGN KEY (announcement_id) REFERENCES announcements(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS announcement_pack_assignments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pack_id INTEGER NOT NULL,
+      assign_type TEXT NOT NULL DEFAULT 'global',
+      target_id INTEGER,
+      target_date TEXT,
+      FOREIGN KEY (pack_id) REFERENCES announcement_packs(id) ON DELETE CASCADE
+    );
+  `);
+
   // Seed default settings
   const settingsCount = db.prepare('SELECT COUNT(*) as cnt FROM settings').get();
   if (settingsCount.cnt === 0) {

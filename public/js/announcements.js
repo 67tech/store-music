@@ -1,6 +1,7 @@
 async function initAnnouncements() {
   await loadAnnouncements();
   await loadScheduledAnnouncements();
+  loadAnnPacks();
   loadScheduledAnnouncementsPanel();
   setInterval(loadScheduledAnnouncementsPanel, 60000);
 
@@ -615,4 +616,176 @@ async function loadScheduledAnnouncementsPanel() {
   } catch (err) {
     container.innerHTML = `<div style="color:#dc2626;padding:8px 12px;font-size:0.85rem;">${esc(err.message)}</div>`;
   }
+}
+
+// --- Announcement Packs ---
+
+let _annPacks = [];
+
+async function loadAnnPacks() {
+  const container = document.getElementById('ann-packs-list');
+  if (!container) return;
+  try {
+    _annPacks = await API.get('/announcement-packs');
+    if (_annPacks.length === 0) {
+      container.innerHTML = '<p class="sm-empty">Brak paczek komunikatow. Utworz pierwsza paczke!</p>';
+      return;
+    }
+    let html = '';
+    for (const pack of _annPacks) {
+      const itemCount = pack.items ? pack.items.length : 0;
+      const assignLabels = (pack.assignments || []).map(a => {
+        if (a.assign_type === 'global') return '<span class="sm-badge">Globalna</span>';
+        if (a.assign_type === 'playlist') return '<span class="sm-badge sm-badge--tts">' + esc(a.target_name || 'Playlista #' + a.target_id) + '</span>';
+        if (a.assign_type === 'calendar') return '<span class="sm-badge sm-badge--audio">' + esc(a.target_date) + '</span>';
+        return '';
+      }).join(' ');
+
+      html += `<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--sm-border);">
+        <div style="flex:1;">
+          <strong>${esc(pack.name)}</strong>
+          <span class="sm-text-muted" style="margin-left:6px;">(${itemCount} komunikatow)</span>
+          <div style="margin-top:4px;">${assignLabels || '<span class="sm-text-muted">Brak przypisan</span>'}</div>
+        </div>
+        <button onclick="editAnnPack(${pack.id})" class="sm-btn sm-btn--small">Edytuj</button>
+        <button onclick="deleteAnnPack(${pack.id})" class="sm-btn sm-btn--danger sm-btn--small">&#10005;</button>
+      </div>`;
+    }
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = '<div style="color:#dc2626;padding:8px;">' + esc(err.message) + '</div>';
+  }
+}
+
+async function showCreateAnnPack() {
+  const name = await smPrompt('Nazwa paczki komunikatow:', '');
+  if (!name) return;
+  await API.post('/announcement-packs', { name });
+  await loadAnnPacks();
+}
+
+async function deleteAnnPack(id) {
+  if (!await smConfirm('Usunac paczke komunikatow?')) return;
+  await API.del('/announcement-packs/' + id);
+  await loadAnnPacks();
+}
+
+async function editAnnPack(id) {
+  const pack = await API.get('/announcement-packs/' + id);
+  const allAnns = await API.get('/announcements');
+  const playlists = await API.get('/playlists');
+
+  const modal = document.getElementById('modal');
+  const modalBody = document.getElementById('modal-body');
+
+  const packAnnIds = new Set((pack.items || []).map(i => i.announcement_id));
+
+  modalBody.innerHTML = `
+    <h2 style="margin-bottom:12px;">Paczka: ${esc(pack.name)}
+      <button onclick="renameAnnPack(${id})" class="sm-btn sm-btn--small" style="margin-left:8px;">Zmien nazwe</button>
+    </h2>
+
+    <div style="display:flex;gap:12px;height:45vh;min-height:250px;">
+      <div style="flex:1;display:flex;flex-direction:column;border:1px solid var(--sm-border);border-radius:6px;overflow:hidden;">
+        <div style="padding:8px 10px;background:var(--sm-bg-alt,#f5f5f5);border-bottom:1px solid var(--sm-border);font-weight:600;font-size:0.85rem;">
+          Komunikaty w paczce (${pack.items.length})
+        </div>
+        <div id="annpack-items" style="flex:1;overflow-y:auto;">
+          ${pack.items.length === 0 ? '<p class="sm-empty" style="padding:8px;">Dodaj komunikaty z prawego panelu</p>' :
+            pack.items.map(item =>
+              '<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-bottom:1px solid var(--sm-border);font-size:0.85rem;">' +
+                '<span style="flex:1;">' + esc(item.title) + '</span>' +
+                '<span class="sm-text-muted">' + esc(item.type || '') + '</span>' +
+                '<button onclick="removeAnnPackItem(' + id + ',' + item.announcement_id + ')" class="sm-btn sm-btn--danger sm-btn--small">&#10005;</button>' +
+              '</div>'
+            ).join('')}
+        </div>
+      </div>
+
+      <div style="flex:1;display:flex;flex-direction:column;border:1px solid var(--sm-border);border-radius:6px;overflow:hidden;">
+        <div style="padding:8px 10px;background:var(--sm-bg-alt,#f5f5f5);border-bottom:1px solid var(--sm-border);font-weight:600;font-size:0.85rem;">
+          Dostepne komunikaty
+        </div>
+        <div id="annpack-available" style="flex:1;overflow-y:auto;">
+          ${allAnns.filter(a => !packAnnIds.has(a.id)).map(a =>
+            '<label style="display:flex;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--sm-border);font-size:0.85rem;cursor:pointer;font-weight:normal;">' +
+              '<input type="checkbox" onchange="addAnnPackItem(' + id + ',' + a.id + ')">' +
+              '<span style="flex:1;">' + esc(a.name) + '</span>' +
+              '<span class="sm-text-muted">' + esc(a.type || '') + '</span>' +
+            '</label>'
+          ).join('') || '<p class="sm-text-muted" style="padding:8px;">Wszystkie komunikaty sa juz w paczce.</p>'}
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;border:1px solid var(--sm-border);border-radius:6px;overflow:hidden;">
+      <div style="padding:8px 10px;background:var(--sm-bg-alt,#f5f5f5);border-bottom:1px solid var(--sm-border);font-weight:600;font-size:0.85rem;">
+        Przypisania
+      </div>
+      <div id="annpack-assignments" style="padding:8px;">
+        ${(pack.assignments || []).map(a => {
+          let label = a.assign_type === 'global' ? 'Globalna' :
+                      a.assign_type === 'playlist' ? 'Playlista: ' + esc(a.target_name || '#' + a.target_id) :
+                      'Dzien: ' + esc(a.target_date);
+          return '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.85rem;">' +
+            '<span style="flex:1;">' + label + '</span>' +
+            '<button onclick="removeAnnPackAssignment(' + a.id + ',' + id + ')" class="sm-btn sm-btn--danger sm-btn--small">&#10005;</button>' +
+          '</div>';
+        }).join('') || '<p class="sm-text-muted" style="margin:0;">Brak przypisan</p>'}
+      </div>
+      <div style="padding:8px;border-top:1px solid var(--sm-border);display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <select id="annpack-assign-type" class="sm-input" style="width:auto;" onchange="annPackAssignTypeChange()">
+          <option value="global">Globalna</option>
+          <option value="playlist">Playlista</option>
+          <option value="calendar">Dzien w kalendarzu</option>
+        </select>
+        <select id="annpack-assign-playlist" class="sm-input" style="width:auto;display:none;">
+          ${playlists.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('')}
+        </select>
+        <input type="date" id="annpack-assign-date" class="sm-input" style="width:auto;display:none;">
+        <button onclick="addAnnPackAssignment(${id})" class="sm-btn sm-btn--primary sm-btn--small">Dodaj przypisanie</button>
+      </div>
+    </div>
+  `;
+
+  modal.classList.add('sm-modal--open');
+}
+
+function annPackAssignTypeChange() {
+  const type = document.getElementById('annpack-assign-type').value;
+  document.getElementById('annpack-assign-playlist').style.display = type === 'playlist' ? '' : 'none';
+  document.getElementById('annpack-assign-date').style.display = type === 'calendar' ? '' : 'none';
+}
+
+async function addAnnPackItem(packId, annId) {
+  await API.post('/announcement-packs/' + packId + '/items', { announcement_id: annId });
+  editAnnPack(packId);
+}
+
+async function removeAnnPackItem(packId, annId) {
+  await API.del('/announcement-packs/' + packId + '/items/' + annId);
+  editAnnPack(packId);
+}
+
+async function addAnnPackAssignment(packId) {
+  const type = document.getElementById('annpack-assign-type').value;
+  const body = { assign_type: type };
+  if (type === 'playlist') body.target_id = parseInt(document.getElementById('annpack-assign-playlist').value);
+  if (type === 'calendar') body.target_date = document.getElementById('annpack-assign-date').value;
+  await API.post('/announcement-packs/' + packId + '/assign', body);
+  editAnnPack(packId);
+}
+
+async function removeAnnPackAssignment(assignId, packId) {
+  await API.del('/announcement-packs/assignments/' + assignId);
+  editAnnPack(packId);
+}
+
+async function renameAnnPack(id) {
+  const pack = _annPacks.find(p => p.id === id);
+  const name = await smPrompt('Nowa nazwa paczki:', pack ? pack.name : '');
+  if (!name) return;
+  await API.put('/announcement-packs/' + id, { name });
+  await loadAnnPacks();
+  editAnnPack(id);
 }

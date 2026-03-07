@@ -19,7 +19,7 @@ class BackupService {
       backup_enabled: s.backup_enabled || false,
       backup_day: s.backup_day || 0, // 0=Sunday
       backup_hour: s.backup_hour || '03:00',
-      backup_destination: s.backup_destination || 'local', // local, ftp, smb, email
+      backup_destinations: s.backup_destinations || ['local'],
       backup_keep: s.backup_keep || 4,
       // FTP
       backup_ftp_host: s.backup_ftp_host || '',
@@ -49,7 +49,7 @@ class BackupService {
 
   saveSettings(data) {
     const allowed = [
-      'backup_enabled', 'backup_day', 'backup_hour', 'backup_destination', 'backup_keep',
+      'backup_enabled', 'backup_day', 'backup_hour', 'backup_destinations', 'backup_keep',
       'backup_ftp_host', 'backup_ftp_port', 'backup_ftp_user', 'backup_ftp_pass', 'backup_ftp_path',
       'backup_smb_share', 'backup_smb_user', 'backup_smb_pass', 'backup_smb_domain', 'backup_smb_path',
       'backup_email_to', 'backup_email_smtp_host', 'backup_email_smtp_port',
@@ -116,16 +116,27 @@ class BackupService {
 
   async sendBackup(filepath, filename) {
     const settings = this.getSettings();
-    const dest = settings.backup_destination;
-
-    if (dest === 'ftp') {
-      await this._sendFtp(filepath, filename, settings);
-    } else if (dest === 'smb') {
-      await this._sendSmb(filepath, filename, settings);
-    } else if (dest === 'email') {
-      await this._sendEmail(filepath, filename, settings);
+    let destinations = settings.backup_destinations;
+    // Backward compat: old single string field
+    if (!destinations && settings.backup_destination) {
+      destinations = [settings.backup_destination];
     }
-    // 'local' — file already in backups dir
+    if (!destinations || !Array.isArray(destinations)) destinations = ['local'];
+
+    const errors = [];
+    for (const dest of destinations) {
+      try {
+        if (dest === 'ftp') await this._sendFtp(filepath, filename, settings);
+        else if (dest === 'smb') await this._sendSmb(filepath, filename, settings);
+        else if (dest === 'email') await this._sendEmail(filepath, filename, settings);
+        // 'local' — file already in backups dir
+      } catch (err) {
+        errors.push(`${dest}: ${err.message}`);
+      }
+    }
+    if (errors.length > 0) {
+      throw new Error('Bledne cele: ' + errors.join('; '));
+    }
   }
 
   async _sendFtp(filepath, filename, s) {

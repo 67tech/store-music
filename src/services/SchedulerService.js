@@ -270,7 +270,9 @@ class SchedulerService {
     if (!playerService.state.playlist) return;
 
     try {
-      const adsToPlay = adService.getAdsToPlay();
+      const currentPlaylistId = playerService.state.playlist ? playerService.state.playlist.id : null;
+      const todayDate = new Date().toISOString().split('T')[0];
+      const adsToPlay = adService.getAdsToPlay(currentPlaylistId, todayDate);
       if (adsToPlay.length === 0) return;
 
       // Play the highest priority ad

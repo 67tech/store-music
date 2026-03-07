@@ -545,16 +545,16 @@ async function loadBackupSettings() {
           </label>
         </div>
 
-        <div class="sm-form-row"><label>Miejsce docelowe:
-          <select id="bk-dest" class="sm-input" style="max-width:200px;" onchange="backupDestChange()">
-            <option value="local" ${s.backup_destination === 'local' ? 'selected' : ''}>Lokalnie (na serwerze)</option>
-            <option value="ftp" ${s.backup_destination === 'ftp' ? 'selected' : ''}>FTP</option>
-            <option value="smb" ${s.backup_destination === 'smb' ? 'selected' : ''}>Zasob sieciowy (SMB/NFS)</option>
-            <option value="email" ${s.backup_destination === 'email' ? 'selected' : ''}>Email</option>
-          </select>
-        </label></div>
+        <div class="sm-form-row"><label>Cele kopii zapasowej:</label>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
+            <label><input type="checkbox" class="bk-dest-cb" value="local" ${(s.backup_destinations || ['local']).includes('local') ? 'checked' : ''} onchange="backupDestChange()"> Lokalnie</label>
+            <label><input type="checkbox" class="bk-dest-cb" value="ftp" ${(s.backup_destinations || []).includes('ftp') ? 'checked' : ''} onchange="backupDestChange()"> FTP</label>
+            <label><input type="checkbox" class="bk-dest-cb" value="smb" ${(s.backup_destinations || []).includes('smb') ? 'checked' : ''} onchange="backupDestChange()"> SMB/NFS</label>
+            <label><input type="checkbox" class="bk-dest-cb" value="email" ${(s.backup_destinations || []).includes('email') ? 'checked' : ''} onchange="backupDestChange()"> Email</label>
+          </div>
+        </div>
 
-        <div id="bk-ftp-opts" class="bk-dest-panel" style="display:${s.backup_destination === 'ftp' ? 'block' : 'none'}; border:1px solid var(--sm-border); border-radius:8px; padding:12px; margin:8px 0; background:var(--sm-bg-light);">
+        <div id="bk-ftp-opts" class="bk-dest-panel" style="display:${(s.backup_destinations || []).includes('ftp') ? 'block' : 'none'}; border:1px solid var(--sm-border); border-radius:8px; padding:12px; margin:8px 0; background:var(--sm-bg-light);">
           <h4 style="margin-bottom:8px; font-size:0.9rem;">FTP</h4>
           <div class="sm-form-row" style="display:flex;gap:8px;">
             <label style="flex:2;">Host: <input type="text" id="bk-ftp-host" class="sm-input" value="${esc(s.backup_ftp_host || '')}" placeholder="ftp.example.com"></label>
@@ -565,10 +565,10 @@ async function loadBackupSettings() {
             <label style="flex:1;">Haslo: <input type="password" id="bk-ftp-pass" class="sm-input" value="${esc(s.backup_ftp_pass || '')}"></label>
           </div>
           <div class="sm-form-row"><label>Sciezka: <input type="text" id="bk-ftp-path" class="sm-input" value="${esc(s.backup_ftp_path || '/backups')}" style="max-width:250px;"></label></div>
-          <button onclick="testBackupDest()" class="sm-btn sm-btn--small">Testuj polaczenie</button>
+          <button onclick="testBackupDest('ftp')" class="sm-btn sm-btn--small">Testuj polaczenie</button>
         </div>
 
-        <div id="bk-smb-opts" class="bk-dest-panel" style="display:${s.backup_destination === 'smb' ? 'block' : 'none'}; border:1px solid var(--sm-border); border-radius:8px; padding:12px; margin:8px 0; background:var(--sm-bg-light);">
+        <div id="bk-smb-opts" class="bk-dest-panel" style="display:${(s.backup_destinations || []).includes('smb') ? 'block' : 'none'}; border:1px solid var(--sm-border); border-radius:8px; padding:12px; margin:8px 0; background:var(--sm-bg-light);">
           <h4 style="margin-bottom:8px; font-size:0.9rem;">Zasob sieciowy (SMB/NFS)</h4>
           <div class="sm-form-row"><label>Adres zasobu:
             <input type="text" id="bk-smb-share" class="sm-input" value="${esc(s.backup_smb_share || '')}" placeholder="//192.168.1.100/backup" style="max-width:350px;">
@@ -584,10 +584,10 @@ async function loadBackupSettings() {
             <input type="text" id="bk-smb-path" class="sm-input" value="${esc(s.backup_smb_path || '/backups')}" placeholder="/backups" style="max-width:250px;">
           </label></div>
           <p style="font-size:0.78rem; color:var(--sm-text-muted);">Adres w formacie //IP/nazwa_udzialu. Zasob zostanie zamontowany automatycznie.</p>
-          <button onclick="testBackupDest()" class="sm-btn sm-btn--small">Testuj polaczenie</button>
+          <button onclick="testBackupDest('smb')" class="sm-btn sm-btn--small">Testuj polaczenie</button>
         </div>
 
-        <div id="bk-email-opts" class="bk-dest-panel" style="display:${s.backup_destination === 'email' ? 'block' : 'none'}; border:1px solid var(--sm-border); border-radius:8px; padding:12px; margin:8px 0; background:var(--sm-bg-light);">
+        <div id="bk-email-opts" class="bk-dest-panel" style="display:${(s.backup_destinations || []).includes('email') ? 'block' : 'none'}; border:1px solid var(--sm-border); border-radius:8px; padding:12px; margin:8px 0; background:var(--sm-bg-light);">
           <h4 style="margin-bottom:8px; font-size:0.9rem;">Email (SMTP)</h4>
           <div class="sm-form-row"><label>Adres odbiorcy:
             <input type="email" id="bk-email-to" class="sm-input" value="${esc(s.backup_email_to || '')}" placeholder="admin@example.com" style="max-width:300px;">
@@ -602,7 +602,7 @@ async function loadBackupSettings() {
           </div>
           <div class="sm-form-row"><label><input type="checkbox" id="bk-smtp-secure" ${s.backup_email_smtp_secure ? 'checked' : ''}> SSL/TLS (port 465)</label></div>
           <p style="font-size:0.78rem; color:var(--sm-text-muted);">Backup musi byc mniejszy niz 25MB. Wieksze kopie — uzyj FTP lub zasobu sieciowego.</p>
-          <button onclick="testBackupDest()" class="sm-btn sm-btn--small">Testuj SMTP</button>
+          <button onclick="testBackupDest('email')" class="sm-btn sm-btn--small">Testuj SMTP</button>
         </div>
       </div>
 
@@ -630,10 +630,12 @@ async function loadBackupSettings() {
 }
 
 function backupDestChange() {
-  const dest = document.getElementById('bk-dest').value;
+  const checked = Array.from(document.querySelectorAll('.bk-dest-cb:checked')).map(function(cb) { return cb.value; });
   document.querySelectorAll('.bk-dest-panel').forEach(function(el) { el.style.display = 'none'; });
-  const panel = document.getElementById('bk-' + dest + '-opts');
-  if (panel) panel.style.display = 'block';
+  checked.forEach(function(dest) {
+    var panel = document.getElementById('bk-' + dest + '-opts');
+    if (panel) panel.style.display = 'block';
+  });
 }
 
 async function saveBackupSettings() {
@@ -642,7 +644,7 @@ async function saveBackupSettings() {
     backup_day: parseInt(document.getElementById('bk-day')?.value || 0),
     backup_hour: document.getElementById('bk-hour')?.value || '03:00',
     backup_keep: parseInt(document.getElementById('bk-keep')?.value || 4),
-    backup_destination: document.getElementById('bk-dest')?.value || 'local',
+    backup_destinations: Array.from(document.querySelectorAll('.bk-dest-cb:checked')).map(function(cb) { return cb.value; }),
     backup_ftp_host: document.getElementById('bk-ftp-host')?.value || '',
     backup_ftp_port: parseInt(document.getElementById('bk-ftp-port')?.value || 21),
     backup_ftp_user: document.getElementById('bk-ftp-user')?.value || '',
@@ -670,8 +672,7 @@ async function saveBackupSettings() {
   }
 }
 
-async function testBackupDest() {
-  const dest = document.getElementById('bk-dest').value;
+async function testBackupDest(dest) {
   const resultEl = document.getElementById('bk-test-result');
   resultEl.textContent = 'Testowanie...';
   resultEl.style.color = 'var(--sm-text)';

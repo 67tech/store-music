@@ -2,6 +2,7 @@
 
 function initAds() {
   loadAds();
+  loadAdPacks();
   loadScheduledAdsPanel();
   // Refresh scheduled ads panel every 60s
   setInterval(loadScheduledAdsPanel, 60000);
@@ -491,6 +492,181 @@ function exportAdReportCsv() {
   const start = document.getElementById('ad-report-start').value;
   const end = document.getElementById('ad-report-end').value;
   window.open(`/api/ads/report/csv?start=${start}&end=${end}`, '_blank');
+}
+
+// --- Ad Packs ---
+
+let _adPacks = [];
+
+async function loadAdPacks() {
+  const container = document.getElementById('ad-packs-list');
+  if (!container) return;
+  try {
+    _adPacks = await API.get('/ad-packs');
+    if (_adPacks.length === 0) {
+      container.innerHTML = '<p class="sm-empty">Brak paczek reklam. Utworz pierwsza paczke!</p>';
+      return;
+    }
+    let html = '';
+    for (const pack of _adPacks) {
+      const itemCount = pack.items ? pack.items.length : 0;
+      const assignLabels = (pack.assignments || []).map(a => {
+        if (a.assign_type === 'global') return '<span class="sm-badge">Globalna</span>';
+        if (a.assign_type === 'playlist') return '<span class="sm-badge sm-badge--tts">' + esc(a.target_name || 'Playlista #' + a.target_id) + '</span>';
+        if (a.assign_type === 'calendar') return '<span class="sm-badge sm-badge--audio">' + esc(a.target_date) + '</span>';
+        return '';
+      }).join(' ');
+
+      html += `<div class="sm-list-item" style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--sm-border);">
+        <div style="flex:1;">
+          <strong>${esc(pack.name)}</strong>
+          <span class="sm-text-muted" style="margin-left:6px;">(${itemCount} reklam)</span>
+          <div style="margin-top:4px;">${assignLabels || '<span class="sm-text-muted">Brak przypisan</span>'}</div>
+        </div>
+        <button onclick="editAdPack(${pack.id})" class="sm-btn sm-btn--small">Edytuj</button>
+        <button onclick="deleteAdPack(${pack.id})" class="sm-btn sm-btn--danger sm-btn--small">&#10005;</button>
+      </div>`;
+    }
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = '<div style="color:#dc2626;padding:8px;">' + esc(err.message) + '</div>';
+  }
+}
+
+async function showCreateAdPack() {
+  const name = await smPrompt('Nazwa paczki reklam:', '');
+  if (!name) return;
+  await API.post('/ad-packs', { name });
+  await loadAdPacks();
+}
+
+async function deleteAdPack(id) {
+  if (!await smConfirm('Usunac paczke reklam?')) return;
+  await API.del('/ad-packs/' + id);
+  await loadAdPacks();
+}
+
+async function editAdPack(id) {
+  const pack = await API.get('/ad-packs/' + id);
+  const allAds = await API.get('/ads');
+  const playlists = await API.get('/playlists');
+
+  const modal = document.getElementById('modal');
+  const modalBody = document.getElementById('modal-body');
+
+  const packAdIds = new Set((pack.items || []).map(i => i.ad_id));
+
+  modalBody.innerHTML = `
+    <h2 style="margin-bottom:12px;">Paczka: ${esc(pack.name)}
+      <button onclick="renameAdPack(${id})" class="sm-btn sm-btn--small" style="margin-left:8px;">Zmien nazwe</button>
+    </h2>
+
+    <div style="display:flex;gap:12px;height:45vh;min-height:250px;">
+      <!-- Left: items in pack -->
+      <div style="flex:1;display:flex;flex-direction:column;border:1px solid var(--sm-border);border-radius:6px;overflow:hidden;">
+        <div style="padding:8px 10px;background:var(--sm-bg-alt,#f5f5f5);border-bottom:1px solid var(--sm-border);font-weight:600;font-size:0.85rem;">
+          Reklamy w paczce (${pack.items.length})
+        </div>
+        <div id="adpack-items" style="flex:1;overflow-y:auto;">
+          ${pack.items.length === 0 ? '<p class="sm-empty" style="padding:8px;">Dodaj reklamy z prawego panelu</p>' :
+            pack.items.map(item =>
+              '<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-bottom:1px solid var(--sm-border);font-size:0.85rem;">' +
+                '<span style="flex:1;">' + esc(item.title) + '</span>' +
+                '<span class="sm-text-muted">' + (item.client_name ? esc(item.client_name) : '') + '</span>' +
+                '<button onclick="removeAdPackItem(' + id + ',' + item.ad_id + ')" class="sm-btn sm-btn--danger sm-btn--small">&#10005;</button>' +
+              '</div>'
+            ).join('')}
+        </div>
+      </div>
+
+      <!-- Right: available ads -->
+      <div style="flex:1;display:flex;flex-direction:column;border:1px solid var(--sm-border);border-radius:6px;overflow:hidden;">
+        <div style="padding:8px 10px;background:var(--sm-bg-alt,#f5f5f5);border-bottom:1px solid var(--sm-border);font-weight:600;font-size:0.85rem;">
+          Dostepne reklamy
+        </div>
+        <div id="adpack-available" style="flex:1;overflow-y:auto;">
+          ${allAds.filter(a => !packAdIds.has(a.id)).map(a =>
+            '<label style="display:flex;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--sm-border);font-size:0.85rem;cursor:pointer;font-weight:normal;">' +
+              '<input type="checkbox" onchange="addAdPackItem(' + id + ',' + a.id + ')">' +
+              '<span style="flex:1;">' + esc(a.title) + '</span>' +
+              '<span class="sm-text-muted">' + (a.client_name ? esc(a.client_name) : '') + '</span>' +
+            '</label>'
+          ).join('') || '<p class="sm-text-muted" style="padding:8px;">Wszystkie reklamy sa juz w paczce.</p>'}
+        </div>
+      </div>
+    </div>
+
+    <!-- Assignments -->
+    <div style="margin-top:16px;border:1px solid var(--sm-border);border-radius:6px;overflow:hidden;">
+      <div style="padding:8px 10px;background:var(--sm-bg-alt,#f5f5f5);border-bottom:1px solid var(--sm-border);font-weight:600;font-size:0.85rem;">
+        Przypisania
+      </div>
+      <div id="adpack-assignments" style="padding:8px;">
+        ${(pack.assignments || []).map(a => {
+          let label = a.assign_type === 'global' ? 'Globalna' :
+                      a.assign_type === 'playlist' ? 'Playlista: ' + esc(a.target_name || '#' + a.target_id) :
+                      'Dzien: ' + esc(a.target_date);
+          return '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.85rem;">' +
+            '<span style="flex:1;">' + label + '</span>' +
+            '<button onclick="removeAdPackAssignment(' + a.id + ',' + id + ')" class="sm-btn sm-btn--danger sm-btn--small">&#10005;</button>' +
+          '</div>';
+        }).join('') || '<p class="sm-text-muted" style="margin:0;">Brak przypisan</p>'}
+      </div>
+      <div style="padding:8px;border-top:1px solid var(--sm-border);display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <select id="adpack-assign-type" class="sm-input" style="width:auto;" onchange="adPackAssignTypeChange()">
+          <option value="global">Globalna</option>
+          <option value="playlist">Playlista</option>
+          <option value="calendar">Dzien w kalendarzu</option>
+        </select>
+        <select id="adpack-assign-playlist" class="sm-input" style="width:auto;display:none;">
+          ${playlists.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('')}
+        </select>
+        <input type="date" id="adpack-assign-date" class="sm-input" style="width:auto;display:none;">
+        <button onclick="addAdPackAssignment(${id})" class="sm-btn sm-btn--primary sm-btn--small">Dodaj przypisanie</button>
+      </div>
+    </div>
+  `;
+
+  modal.classList.add('sm-modal--open');
+}
+
+function adPackAssignTypeChange() {
+  const type = document.getElementById('adpack-assign-type').value;
+  document.getElementById('adpack-assign-playlist').style.display = type === 'playlist' ? '' : 'none';
+  document.getElementById('adpack-assign-date').style.display = type === 'calendar' ? '' : 'none';
+}
+
+async function addAdPackItem(packId, adId) {
+  await API.post('/ad-packs/' + packId + '/items', { ad_id: adId });
+  editAdPack(packId);
+}
+
+async function removeAdPackItem(packId, adId) {
+  await API.del('/ad-packs/' + packId + '/items/' + adId);
+  editAdPack(packId);
+}
+
+async function addAdPackAssignment(packId) {
+  const type = document.getElementById('adpack-assign-type').value;
+  const body = { assign_type: type };
+  if (type === 'playlist') body.target_id = parseInt(document.getElementById('adpack-assign-playlist').value);
+  if (type === 'calendar') body.target_date = document.getElementById('adpack-assign-date').value;
+  await API.post('/ad-packs/' + packId + '/assign', body);
+  editAdPack(packId);
+}
+
+async function removeAdPackAssignment(assignId, packId) {
+  await API.del('/ad-packs/assignments/' + assignId);
+  editAdPack(packId);
+}
+
+async function renameAdPack(id) {
+  const pack = _adPacks.find(p => p.id === id);
+  const name = await smPrompt('Nowa nazwa paczki:', pack ? pack.name : '');
+  if (!name) return;
+  await API.put('/ad-packs/' + id, { name });
+  await loadAdPacks();
+  editAdPack(id);
 }
 
 async function loadScheduledAdsPanel() {

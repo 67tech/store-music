@@ -907,6 +907,18 @@ async function createPlaylist() {
         ` : ''}
       </div>
     </div>
+    <div class="sm-form-row" style="margin-top: 12px;">
+      <label>Przeznaczenie</label>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal;">
+          <input type="radio" name="new-pl-type" value="general" checked> Ogólna (do codziennego użytku)
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal;">
+          <input type="radio" name="new-pl-type" value="date"> Na konkretny dzień
+        </label>
+        <input type="date" id="new-pl-date" class="sm-input" style="margin-left: 24px; display: none; max-width: 200px;">
+      </div>
+    </div>
     <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
       <button class="sm-btn" style="background: var(--sm-border); color: var(--sm-text);" id="new-pl-cancel">Anuluj</button>
       <button class="sm-btn sm-btn--primary" id="new-pl-create">Utwórz</button>
@@ -920,6 +932,17 @@ async function createPlaylist() {
     radios.forEach(r => r.addEventListener('change', () => {
       const checked = modalBody.querySelector('input[name="new-pl-tracks"]:checked');
       copySelect.style.display = checked && checked.value === 'copy' ? 'block' : 'none';
+    }));
+  }
+
+  // Show/hide date picker based on type radio
+  const typeRadios = modalBody.querySelectorAll('input[name="new-pl-type"]');
+  const dateInput = document.getElementById('new-pl-date');
+  if (dateInput) {
+    dateInput.value = new Date().toISOString().split('T')[0];
+    typeRadios.forEach(r => r.addEventListener('change', () => {
+      const checked = modalBody.querySelector('input[name="new-pl-type"]:checked');
+      dateInput.style.display = checked && checked.value === 'date' ? 'block' : 'none';
     }));
   }
 
@@ -944,8 +967,22 @@ async function createPlaylist() {
         body.copyFromPlaylistId = parseInt(copySelect.value);
       }
       modal.classList.remove('sm-modal--open');
-      await API.post('/playlists', body);
+      const newPl = await API.post('/playlists', body);
+
+      // Assign to calendar date if specific date selected
+      const plType = modalBody.querySelector('input[name="new-pl-type"]:checked')?.value;
+      if (plType === 'date' && dateInput && dateInput.value) {
+        try {
+          await API.post('/schedule/calendar', {
+            date: dateInput.value,
+            playlist_id: newPl.id,
+            label: '',
+          });
+        } catch (e) { console.warn('Calendar assign failed:', e); }
+      }
+
       await loadPlaylists();
+      if (typeof loadCalendarPlaylists === 'function') await loadCalendarPlaylists();
       resolve();
     };
     document.getElementById('new-pl-name').addEventListener('keydown', (e) => {
@@ -978,6 +1015,7 @@ async function deletePlaylist(id) {
     currentPlaylistData = null;
   }
   await loadPlaylists();
+  if (typeof loadCalendarPlaylists === 'function') await loadCalendarPlaylists();
 }
 
 async function playPlaylist(id) {
@@ -989,32 +1027,51 @@ async function toggleDefault(id, val) {
   await loadPlaylists();
 }
 
+let _viewPlAllTracks = [];
+let _viewPlId = null;
+
 async function viewPlaylist(id) {
   const playlist = await API.get(`/playlists/${id}`);
-  const allTracks = await API.get('/tracks');
+  _viewPlAllTracks = await API.get('/tracks');
+  _viewPlId = id;
 
   const modal = document.getElementById('modal');
   const modalBody = document.getElementById('modal-body');
 
-  const trackOptions = allTracks
-    .filter(t => !playlist.tracks.find(pt => pt.id === t.id))
-    .map(t => `<option value="${t.id}">${esc(t.title)}</option>`)
-    .join('');
+  const playlistTrackIds = new Set(playlist.tracks.map(t => t.id));
+  const totalDuration = playlist.tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
 
   modalBody.innerHTML = `
-    <h2>Playlista: ${esc(playlist.name)}</h2>
-    <div class="sm-form-row">
-      <label><input type="checkbox" id="pl-shuffle" ${playlist.shuffle ? 'checked' : ''}> Losowa kolejność</label>
+    <h2 style="margin-bottom:4px;">Playlista: ${esc(playlist.name)}</h2>
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+      <label style="font-weight:normal;cursor:pointer;"><input type="checkbox" id="pl-shuffle" ${playlist.shuffle ? 'checked' : ''}> Losowa kolejność</label>
+      <span class="sm-text-muted" id="pl-track-count">${playlist.tracks.length} utworów · ${formatTime(totalDuration)}</span>
     </div>
-    <div class="sm-playlist-tracks" id="modal-playlist-tracks"></div>
-    <div class="sm-form-row">
-      <select id="add-track-select"><option value="">Dodaj utwór...</option>${trackOptions}</select>
-      <button onclick="addTrackToPlaylist(${id})" class="sm-btn">Dodaj</button>
+
+    <div style="display:flex;gap:12px;height:55vh;min-height:300px;">
+      <!-- Left: playlist tracks -->
+      <div style="flex:1;display:flex;flex-direction:column;border:1px solid var(--sm-border);border-radius:6px;overflow:hidden;">
+        <div style="padding:8px 10px;background:var(--sm-bg-alt,#f5f5f5);border-bottom:1px solid var(--sm-border);font-weight:600;font-size:0.85rem;">
+          Utwory na playliście
+        </div>
+        <div class="sm-playlist-tracks" id="modal-playlist-tracks" style="flex:1;overflow-y:auto;"></div>
+      </div>
+
+      <!-- Right: add tracks -->
+      <div style="flex:1;display:flex;flex-direction:column;border:1px solid var(--sm-border);border-radius:6px;overflow:hidden;">
+        <div style="padding:8px 10px;background:var(--sm-bg-alt,#f5f5f5);border-bottom:1px solid var(--sm-border);font-weight:600;font-size:0.85rem;">
+          Dodaj utwory
+        </div>
+        <div style="padding:6px 8px;border-bottom:1px solid var(--sm-border);">
+          <input type="text" id="pl-add-search" class="sm-input" placeholder="Szukaj utworów..." oninput="filterViewPlTracks()" style="width:100%;font-size:0.85rem;">
+        </div>
+        <div id="pl-add-tracks-list" style="flex:1;overflow-y:auto;"></div>
+      </div>
     </div>
   `;
 
-  const tracksContainer = document.getElementById('modal-playlist-tracks');
-  renderPlaylistTracks(tracksContainer, playlist);
+  renderPlaylistTracks(document.getElementById('modal-playlist-tracks'), playlist);
+  renderViewPlAvailableTracks(playlistTrackIds);
 
   document.getElementById('pl-shuffle').onchange = async (e) => {
     await API.put(`/playlists/${id}`, { shuffle: e.target.checked });
@@ -1023,34 +1080,70 @@ async function viewPlaylist(id) {
   modal.classList.add('sm-modal--open');
 }
 
+function renderViewPlAvailableTracks(playlistTrackIds) {
+  const container = document.getElementById('pl-add-tracks-list');
+  if (!container) return;
+  const query = (document.getElementById('pl-add-search')?.value || '').toLowerCase();
+
+  const available = _viewPlAllTracks.filter(t => {
+    if (playlistTrackIds.has(t.id)) return false;
+    if (query && !(t.title || '').toLowerCase().includes(query) && !(t.artist || '').toLowerCase().includes(query)) return false;
+    return true;
+  });
+
+  if (available.length === 0) {
+    container.innerHTML = '<p class="sm-text-muted" style="padding:8px;font-size:0.85rem;">Brak utworów do dodania.</p>';
+    return;
+  }
+
+  container.innerHTML = available.map(t =>
+    `<label style="display:flex;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--sm-border);font-size:0.85rem;cursor:pointer;font-weight:normal;" title="${esc(t.artist || '')}">
+      <input type="checkbox" onchange="toggleViewPlTrack(${_viewPlId}, ${t.id}, this.checked)">
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.title || 'Bez tytulu')}</span>
+      <span style="color:var(--sm-text-muted);font-size:0.78rem;white-space:nowrap;">${esc(t.artist || '')}</span>
+      <span style="color:var(--sm-text-muted);font-size:0.78rem;">${formatTime(t.duration)}</span>
+    </label>`
+  ).join('');
+}
+
+function filterViewPlTracks() {
+  // Rebuild available list based on current playlist state
+  const trackEls = document.querySelectorAll('#modal-playlist-tracks .sm-playlist-track');
+  const playlistTrackIds = new Set();
+  trackEls.forEach(el => playlistTrackIds.add(parseInt(el.dataset.trackId)));
+  renderViewPlAvailableTracks(playlistTrackIds);
+}
+
+async function toggleViewPlTrack(playlistId, trackId, add) {
+  if (add) {
+    await API.post(`/playlists/${playlistId}/tracks`, { trackId });
+  } else {
+    await API.del(`/playlists/${playlistId}/tracks/${trackId}`);
+  }
+  // Refresh both panels
+  const playlist = await API.get(`/playlists/${playlistId}`);
+  const playlistTrackIds = new Set(playlist.tracks.map(t => t.id));
+  renderPlaylistTracks(document.getElementById('modal-playlist-tracks'), playlist);
+  renderViewPlAvailableTracks(playlistTrackIds);
+  // Update count
+  const totalDuration = playlist.tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
+  const countEl = document.getElementById('pl-track-count');
+  if (countEl) countEl.textContent = playlist.tracks.length + ' utworów · ' + formatTime(totalDuration);
+  if (playlistId === currentPlaylistId) loadCurrentPlaylist(currentPlaylistId);
+}
+
 function renderPlaylistTracks(container, playlist) {
   if (playlist.tracks.length === 0) {
-    container.innerHTML = '<p class="sm-empty">Brak utworów na playliście</p>';
+    container.innerHTML = '<p class="sm-empty" style="padding:8px;">Brak utworów — dodaj z prawego panelu</p>';
     return;
   }
   container.innerHTML = playlist.tracks.map((t, i) => `
     <div class="sm-playlist-track" draggable="true" data-track-id="${t.id}" data-index="${i}">
       <span class="sm-drag-handle">&#9776;</span>
       <span class="sm-track-info">${i + 1}. ${esc(t.title)} <small>${formatTime(t.duration)}</small></span>
-      <button onclick="removeFromPlaylist(${playlist.id}, ${t.id})" class="sm-btn sm-btn--danger sm-btn--small">&#10005;</button>
+      <button onclick="toggleViewPlTrack(${playlist.id}, ${t.id}, false)" class="sm-btn sm-btn--danger sm-btn--small" title="Usuń z playlisty">&#10005;</button>
     </div>
   `).join('');
-}
-
-async function addTrackToPlaylist(playlistId) {
-  const select = document.getElementById('add-track-select');
-  const trackId = parseInt(select.value);
-  if (!trackId) return;
-  await API.post(`/playlists/${playlistId}/tracks`, { trackId });
-  viewPlaylist(playlistId);
-  // Refresh current playlist if same
-  if (playlistId === currentPlaylistId) loadCurrentPlaylist(currentPlaylistId);
-}
-
-async function removeFromPlaylist(playlistId, trackId) {
-  await API.del(`/playlists/${playlistId}/tracks/${trackId}`);
-  viewPlaylist(playlistId);
-  if (playlistId === currentPlaylistId) loadCurrentPlaylist(currentPlaylistId);
 }
 
 async function addToPlaylistPrompt(trackId) {

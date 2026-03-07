@@ -125,12 +125,15 @@ function renderDatePanel(dateStr) {
         </div>` : '<p class="sm-text-muted" style="margin:0 0 12px;">Brak przypisanej playlisty — gra domyslna.</p>'}
 
         <div class="sm-form-row">
-          <label>Playlista na ten dzien:
-            <select id="cal-playlist-select" class="sm-input">
+          <label>Playlista na ten dzien:</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <select id="cal-playlist-select" class="sm-input" style="flex:1;" onchange="calPlaylistSelectChanged()">
               <option value="">-- domyslna --</option>
               ${playlistOptions}
             </select>
-          </label>
+            <button id="cal-edit-playlist-btn" onclick="editCalendarPlaylist()" class="sm-btn sm-btn--small" style="${entry ? '' : 'display:none;'}">Edytuj</button>
+            <button onclick="showCalendarNewPlaylist('${dateStr}')" class="sm-btn sm-btn--small">+ Nowa</button>
+          </div>
         </div>
         <div class="sm-form-row">
           <label>Etykieta (opcjonalnie):
@@ -152,10 +155,21 @@ function renderDatePanel(dateStr) {
         <button onclick="addDateAnnouncement('${dateStr}')" class="sm-btn sm-btn--small">+ Dodaj komunikat</button>
       </div>
     </div>
+
+    <div class="sm-card" style="margin-top:12px;">
+      <div class="sm-card-header"><h3>Paczki reklam</h3></div>
+      <div id="cal-date-ad-packs" style="padding:8px 12px;"></div>
+    </div>
+
+    <div class="sm-card" style="margin-top:12px;">
+      <div class="sm-card-header"><h3>Paczki komunikatow</h3></div>
+      <div id="cal-date-ann-packs" style="padding:8px 12px;"></div>
+    </div>
   `;
 
   panel.innerHTML = html;
   loadDateAnnouncements(dateStr);
+  loadDatePacks(dateStr);
 }
 
 async function saveCalendarDate(dateStr) {
@@ -179,10 +193,23 @@ async function saveCalendarDate(dateStr) {
 }
 
 async function removeCalendarDate(dateStr) {
+  if (!await smConfirm('Usunac przypisanie playlisty z tego dnia?')) return;
   await API.del(`/schedule/calendar/${dateStr}`);
   delete _calendarEntries[dateStr];
   renderCalendar();
   renderDatePanel(dateStr);
+}
+
+function calPlaylistSelectChanged() {
+  const sel = document.getElementById('cal-playlist-select');
+  const btn = document.getElementById('cal-edit-playlist-btn');
+  if (btn) btn.style.display = sel.value ? '' : 'none';
+}
+
+function editCalendarPlaylist() {
+  const sel = document.getElementById('cal-playlist-select');
+  const id = parseInt(sel.value);
+  if (id && typeof viewPlaylist === 'function') viewPlaylist(id);
 }
 
 function showBulkAssign(fromDate) {
@@ -399,4 +426,256 @@ async function deleteScheduledFromCalendar(scheduledId, dateStr) {
   if (!await smConfirm('Usunac zaplanowany komunikat?')) return;
   await API.del(`/announcements/scheduled/${scheduledId}`);
   loadDateAnnouncements(dateStr);
+}
+
+// --- Create new playlist from calendar ---
+
+let _calNewPlTracks = []; // selected track IDs for new playlist
+let _calAllTracks = []; // cached all tracks
+
+async function showCalendarNewPlaylist(dateStr) {
+  const modal = document.getElementById('modal');
+  const modalBody = document.getElementById('modal-body');
+
+  // Load tracks and playlists
+  _calAllTracks = await API.get('/tracks');
+  _calNewPlTracks = [];
+
+  const playlistOptions = _calendarPlaylists.map(p =>
+    `<option value="${p.id}">${esc(p.name)} (${p.trackCount} utw.)</option>`
+  ).join('');
+
+  modalBody.innerHTML = `
+    <h2>Nowa playlista na ${dateStr}</h2>
+    <div class="sm-form-row"><label>Nazwa playlisty:
+      <input type="text" id="cal-newpl-name" class="sm-input" placeholder="np. Piątkowa wieczorna">
+    </label></div>
+
+    <div class="sm-form-row"><label>Zrodlo utworow:</label>
+      <div style="margin-top:4px;">
+        <label style="display:block;margin-bottom:6px;"><input type="radio" name="cal-newpl-src" value="empty" checked onchange="calNewPlSrcChange()"> Pusta playlista</label>
+        <label style="display:block;margin-bottom:6px;"><input type="radio" name="cal-newpl-src" value="copy" onchange="calNewPlSrcChange()"> Kopiuj z istniejącej playlisty</label>
+        <label style="display:block;"><input type="radio" name="cal-newpl-src" value="pick" onchange="calNewPlSrcChange()"> Wybierz utwory</label>
+      </div>
+    </div>
+
+    <div id="cal-newpl-copy-row" style="display:none;">
+      <div class="sm-form-row"><label>Kopiuj utwory z:
+        <select id="cal-newpl-copy-from" class="sm-input">${playlistOptions}</select>
+      </label></div>
+    </div>
+
+    <div id="cal-newpl-pick-row" style="display:none;">
+      <div class="sm-form-row">
+        <label>Szukaj:</label>
+        <input type="text" id="cal-newpl-search" class="sm-input" placeholder="Wpisz tytul lub artystę..." oninput="calNewPlFilterTracks()" style="margin-bottom:8px;">
+      </div>
+      <div id="cal-newpl-track-list" style="max-height:250px;overflow-y:auto;border:1px solid var(--sm-border);border-radius:6px;padding:4px;"></div>
+      <div id="cal-newpl-selected-count" style="font-size:0.82rem;color:var(--sm-text-muted);margin-top:4px;">Wybrano: 0 utworow</div>
+    </div>
+
+    <div id="cal-newpl-status" style="color:#dc2626;font-size:0.85rem;margin:8px 0;"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="sm-btn" style="background:var(--sm-border);color:var(--sm-text);" onclick="document.getElementById('modal').classList.remove('sm-modal--open')">Anuluj</button>
+      <button onclick="submitCalendarNewPlaylist('${dateStr}')" class="sm-btn sm-btn--primary">Utworz i przypisz</button>
+    </div>
+  `;
+
+  calNewPlRenderTracks();
+  modal.classList.add('sm-modal--open');
+}
+
+function calNewPlSrcChange() {
+  const src = document.querySelector('input[name="cal-newpl-src"]:checked')?.value || 'empty';
+  document.getElementById('cal-newpl-copy-row').style.display = src === 'copy' ? '' : 'none';
+  document.getElementById('cal-newpl-pick-row').style.display = src === 'pick' ? '' : 'none';
+}
+
+function calNewPlRenderTracks() {
+  const container = document.getElementById('cal-newpl-track-list');
+  if (!container) return;
+
+  const query = (document.getElementById('cal-newpl-search')?.value || '').toLowerCase();
+  const filtered = _calAllTracks.filter(function(t) {
+    if (!query) return true;
+    return (t.title || '').toLowerCase().includes(query) || (t.artist || '').toLowerCase().includes(query);
+  }).slice(0, 100);
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<p class="sm-text-muted" style="padding:8px;">Brak utworow pasujacych do wyszukiwania.</p>';
+    return;
+  }
+
+  let html = '';
+  for (const t of filtered) {
+    const checked = _calNewPlTracks.includes(t.id) ? 'checked' : '';
+    html += '<label style="display:flex;align-items:center;gap:6px;padding:3px 6px;border-bottom:1px solid var(--sm-border);font-size:0.85rem;cursor:pointer;">' +
+      '<input type="checkbox" ' + checked + ' onchange="calNewPlToggleTrack(' + t.id + ', this.checked)">' +
+      '<span style="flex:1;">' + esc(t.title || 'Bez tytulu') + '</span>' +
+      '<span style="color:var(--sm-text-muted);font-size:0.78rem;">' + esc(t.artist || '') + '</span>' +
+      '<span style="color:var(--sm-text-muted);font-size:0.78rem;">' + formatTime(t.duration) + '</span>' +
+    '</label>';
+  }
+  container.innerHTML = html;
+}
+
+function calNewPlFilterTracks() {
+  calNewPlRenderTracks();
+}
+
+function calNewPlToggleTrack(trackId, checked) {
+  if (checked && !_calNewPlTracks.includes(trackId)) {
+    _calNewPlTracks.push(trackId);
+  } else if (!checked) {
+    _calNewPlTracks = _calNewPlTracks.filter(function(id) { return id !== trackId; });
+  }
+  var countEl = document.getElementById('cal-newpl-selected-count');
+  if (countEl) countEl.textContent = 'Wybrano: ' + _calNewPlTracks.length + ' utworow';
+}
+
+async function submitCalendarNewPlaylist(dateStr) {
+  const name = document.getElementById('cal-newpl-name')?.value?.trim();
+  const statusEl = document.getElementById('cal-newpl-status');
+  if (!name) { statusEl.textContent = 'Podaj nazwe playlisty'; return; }
+
+  const src = document.querySelector('input[name="cal-newpl-src"]:checked')?.value || 'empty';
+
+  statusEl.textContent = 'Tworzenie...';
+  statusEl.style.color = 'var(--sm-text)';
+
+  try {
+    // Create playlist
+    const body = { name };
+    if (src === 'copy') {
+      body.copyFromPlaylistId = parseInt(document.getElementById('cal-newpl-copy-from').value);
+    }
+    const newPlaylist = await API.post('/playlists', body);
+
+    // If picking tracks, add them one by one
+    if (src === 'pick' && _calNewPlTracks.length > 0) {
+      for (const tid of _calNewPlTracks) {
+        await API.post('/playlists/' + newPlaylist.id + '/tracks', { trackId: tid });
+      }
+    }
+
+    // Assign to calendar date
+    const label = document.getElementById('cal-label')?.value?.trim() || '';
+    const entry = await API.post('/schedule/calendar', {
+      date: dateStr,
+      playlist_id: newPlaylist.id,
+      label: label,
+    });
+    _calendarEntries[dateStr] = entry;
+
+    // Refresh playlists cache (calendar + main view)
+    await loadCalendarPlaylists();
+    if (typeof loadPlaylists === 'function') await loadPlaylists();
+
+    document.getElementById('modal').classList.remove('sm-modal--open');
+    renderCalendar();
+    renderDatePanel(dateStr);
+  } catch (err) {
+    statusEl.textContent = 'Blad: ' + err.message;
+    statusEl.style.color = '#dc2626';
+  }
+}
+
+// --- Date packs (ad + announcement) ---
+
+async function loadDatePacks(dateStr) {
+  // Ad packs
+  const adContainer = document.getElementById('cal-date-ad-packs');
+  const annContainer = document.getElementById('cal-date-ann-packs');
+  if (!adContainer || !annContainer) return;
+
+  try {
+    const adPacks = await API.get('/ad-packs');
+    const annPacks = await API.get('/announcement-packs');
+
+    // Find packs assigned to this date
+    const assignedAd = adPacks.filter(p =>
+      (p.assignments || []).some(a => a.assign_type === 'calendar' && a.target_date === dateStr)
+    );
+    const unassignedAd = adPacks.filter(p =>
+      !(p.assignments || []).some(a => a.assign_type === 'calendar' && a.target_date === dateStr)
+    );
+
+    let adHtml = '';
+    if (assignedAd.length > 0) {
+      adHtml += assignedAd.map(p => {
+        const assignId = p.assignments.find(a => a.assign_type === 'calendar' && a.target_date === dateStr).id;
+        return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:0.85rem;">' +
+          '<span style="flex:1;"><strong>' + esc(p.name) + '</strong> <span class="sm-text-muted">(' + p.items.length + ' reklam)</span></span>' +
+          '<button onclick="unassignDateAdPack(' + assignId + ',\'' + dateStr + '\')" class="sm-btn sm-btn--danger sm-btn--small">&#10005;</button>' +
+        '</div>';
+      }).join('');
+    } else {
+      adHtml += '<p class="sm-text-muted" style="margin:0 0 8px;">Brak paczek reklam na ten dzien.</p>';
+    }
+    if (unassignedAd.length > 0) {
+      adHtml += '<div style="display:flex;gap:6px;align-items:center;margin-top:6px;">' +
+        '<select id="cal-add-ad-pack" class="sm-input" style="flex:1;font-size:0.85rem;">' +
+        unassignedAd.map(p => '<option value="' + p.id + '">' + esc(p.name) + ' (' + p.items.length + ' reklam)</option>').join('') +
+        '</select>' +
+        '<button onclick="assignDateAdPack(\'' + dateStr + '\')" class="sm-btn sm-btn--small">Dodaj</button>' +
+      '</div>';
+    }
+    adContainer.innerHTML = adHtml;
+
+    // Announcement packs
+    const assignedAnn = annPacks.filter(p =>
+      (p.assignments || []).some(a => a.assign_type === 'calendar' && a.target_date === dateStr)
+    );
+    const unassignedAnn = annPacks.filter(p =>
+      !(p.assignments || []).some(a => a.assign_type === 'calendar' && a.target_date === dateStr)
+    );
+
+    let annHtml = '';
+    if (assignedAnn.length > 0) {
+      annHtml += assignedAnn.map(p => {
+        const assignId = p.assignments.find(a => a.assign_type === 'calendar' && a.target_date === dateStr).id;
+        return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:0.85rem;">' +
+          '<span style="flex:1;"><strong>' + esc(p.name) + '</strong> <span class="sm-text-muted">(' + p.items.length + ' komunikatow)</span></span>' +
+          '<button onclick="unassignDateAnnPack(' + assignId + ',\'' + dateStr + '\')" class="sm-btn sm-btn--danger sm-btn--small">&#10005;</button>' +
+        '</div>';
+      }).join('');
+    } else {
+      annHtml += '<p class="sm-text-muted" style="margin:0 0 8px;">Brak paczek komunikatow na ten dzien.</p>';
+    }
+    if (unassignedAnn.length > 0) {
+      annHtml += '<div style="display:flex;gap:6px;align-items:center;margin-top:6px;">' +
+        '<select id="cal-add-ann-pack" class="sm-input" style="flex:1;font-size:0.85rem;">' +
+        unassignedAnn.map(p => '<option value="' + p.id + '">' + esc(p.name) + ' (' + p.items.length + ' komunikatow)</option>').join('') +
+        '</select>' +
+        '<button onclick="assignDateAnnPack(\'' + dateStr + '\')" class="sm-btn sm-btn--small">Dodaj</button>' +
+      '</div>';
+    }
+    annContainer.innerHTML = annHtml;
+  } catch (err) {
+    adContainer.innerHTML = '<div style="color:#dc2626;font-size:0.85rem;">' + esc(err.message) + '</div>';
+  }
+}
+
+async function assignDateAdPack(dateStr) {
+  const packId = parseInt(document.getElementById('cal-add-ad-pack').value);
+  if (!packId) return;
+  await API.post('/ad-packs/' + packId + '/assign', { assign_type: 'calendar', target_date: dateStr });
+  loadDatePacks(dateStr);
+}
+
+async function unassignDateAdPack(assignId, dateStr) {
+  await API.del('/ad-packs/assignments/' + assignId);
+  loadDatePacks(dateStr);
+}
+
+async function assignDateAnnPack(dateStr) {
+  const packId = parseInt(document.getElementById('cal-add-ann-pack').value);
+  if (!packId) return;
+  await API.post('/announcement-packs/' + packId + '/assign', { assign_type: 'calendar', target_date: dateStr });
+  loadDatePacks(dateStr);
+}
+
+async function unassignDateAnnPack(assignId, dateStr) {
+  await API.del('/announcement-packs/assignments/' + assignId);
+  loadDatePacks(dateStr);
 }

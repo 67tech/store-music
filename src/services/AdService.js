@@ -78,18 +78,39 @@ class AdService {
     return map;
   }
 
+  // Get ad IDs that are in packs assigned to a given context
+  getPackAdIds(playlistId, date) {
+    try {
+      const adPackService = require('./AdPackService');
+      return adPackService.getAdsForContext(playlistId, date);
+    } catch { return []; }
+  }
+
   // Determine which ads should play now
-  getAdsToPlay() {
+  getAdsToPlay(playlistId, date) {
     const now = new Date();
     const dayOfWeek = now.getDay(); // 0=Sun
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    // Get pack-context ad IDs (ads in packs assigned to current playlist/date)
+    const packAdIds = new Set(this.getPackAdIds(playlistId, date));
 
     const activeAds = getDb().prepare('SELECT * FROM ads WHERE is_active = 1 ORDER BY priority DESC').all();
     const playCounts = this.getTodayPlayCounts();
     const lastPlayed = this.getLastPlayTimes();
     const toPlay = [];
 
+    // Get set of all ad IDs that belong to any pack
+    let allPackedAdIds = new Set();
+    try {
+      const rows = getDb().prepare('SELECT DISTINCT ad_id FROM ad_pack_items').all();
+      allPackedAdIds = new Set(rows.map(r => r.ad_id));
+    } catch {}
+
     for (const ad of activeAds) {
+      // If ad is in a pack, only play it when the pack is assigned to current context
+      if (allPackedAdIds.has(ad.id) && !packAdIds.has(ad.id)) continue;
+
       // Check day of week
       const days = JSON.parse(ad.days_of_week || '[]');
       if (!days.includes(dayOfWeek)) continue;
