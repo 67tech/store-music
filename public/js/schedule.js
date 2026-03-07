@@ -9,6 +9,7 @@ async function initSchedule() {
   await loadTimeline();
   await loadStoreHours();
   await loadExceptions();
+  await loadMatchDays();
   await loadSettings();
 
   document.getElementById('btn-add-exception').onclick = addException;
@@ -206,7 +207,8 @@ async function loadSettings() {
     <div class="sm-form-row"><label><input type="checkbox" id="set-auto-play" ${settings.autoPlayOnOpen ? 'checked' : ''}> Auto-odtwarzanie przy otwarciu</label></div>
     <div class="sm-form-row"><label><input type="checkbox" id="set-auto-stop" ${settings.autoStopOnClose ? 'checked' : ''}> Auto-stop przy zamknięciu</label></div>
     <div class="sm-form-row"><label>Domyślna głośność: <input type="range" id="set-volume" min="0" max="100" value="${settings.volume || 50}"> <span id="set-volume-val">${settings.volume || 50}</span></label></div>
-    <div class="sm-form-row"><label>Czas fade (ms): <input type="number" id="set-fade" value="${settings.announcementFadeDurationMs || 2000}" min="0" max="10000" step="500"></label></div>
+    <div class="sm-form-row"><label>Czas fade komunikatów (ms): <input type="number" id="set-fade" value="${settings.announcementFadeDurationMs || 2000}" min="0" max="10000" step="500"></label></div>
+    <div class="sm-form-row"><label>Crossfade między utworami (ms): <input type="number" id="set-crossfade" value="${settings.crossfadeDurationMs || 0}" min="0" max="12000" step="500"> <span class="sm-text-muted">(0 = wyłączony)</span></label></div>
     <div class="sm-form-row"><label>Silnik TTS:
       <select id="set-tts-engine">
         <option value="google" ${settings.ttsEngine === 'google' ? 'selected' : ''}>Google TTS</option>
@@ -227,8 +229,108 @@ async function saveSettings() {
     autoStopOnClose: document.getElementById('set-auto-stop').checked,
     volume: parseInt(document.getElementById('set-volume').value),
     announcementFadeDurationMs: parseInt(document.getElementById('set-fade').value),
+    crossfadeDurationMs: parseInt(document.getElementById('set-crossfade').value),
     ttsEngine: document.getElementById('set-tts-engine').value,
   };
   await API.put('/schedule/settings', data);
   await smAlert('Zapisano!');
+}
+
+// --- Match Days ---
+let matchdayDates = [];
+
+async function loadMatchDays() {
+  const container = document.getElementById('matchday-section');
+  const template = await API.get('/schedule/matchdays/template');
+
+  container.innerHTML = `
+    <div class="sm-card-body">
+      <p style="font-size: 0.82rem; color: var(--sm-text-muted); margin-bottom: 10px;">
+        Ustaw szablon godzin dla dni meczowych, a nastepnie wybierz daty.
+      </p>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;">
+        <div class="sm-form-row" style="flex:1; min-width: 120px; margin-bottom: 0;">
+          <label>Otwarcie: <input type="time" id="md-open" value="${template.open_time}"></label>
+        </div>
+        <div class="sm-form-row" style="flex:1; min-width: 120px; margin-bottom: 0;">
+          <label>Zamkniecie: <input type="time" id="md-close" value="${template.close_time}"></label>
+        </div>
+        <div class="sm-form-row" style="flex:1; min-width: 150px; margin-bottom: 0;">
+          <label>Etykieta: <input type="text" id="md-label" value="${esc(template.label)}"></label>
+        </div>
+      </div>
+      <button onclick="saveMatchdayTemplate()" class="sm-btn sm-btn--small" style="margin-bottom: 16px;">Zapisz szablon</button>
+
+      <div style="border-top: 1px solid var(--sm-border); padding-top: 12px;">
+        <div class="sm-form-row" style="margin-bottom: 8px;">
+          <label>Dodaj date: <input type="date" id="md-date-input" min="${new Date().toISOString().slice(0, 10)}"></label>
+        </div>
+        <button onclick="addMatchdayDate()" class="sm-btn sm-btn--small" style="margin-bottom: 8px;">+ Dodaj date</button>
+        <div class="sm-matchday-dates" id="md-dates-list"></div>
+        <button onclick="applyMatchdays()" class="sm-btn sm-btn--primary sm-btn--small" style="margin-top: 8px;" id="md-apply-btn" disabled>Zastosuj do harmonogramu</button>
+      </div>
+    </div>
+  `;
+
+  matchdayDates = [];
+  renderMatchdayDates();
+}
+
+async function saveMatchdayTemplate() {
+  await API.put('/schedule/matchdays/template', {
+    open_time: document.getElementById('md-open').value,
+    close_time: document.getElementById('md-close').value,
+    label: document.getElementById('md-label').value,
+  });
+  await smAlert('Szablon zapisany!');
+}
+
+function addMatchdayDate() {
+  const input = document.getElementById('md-date-input');
+  const date = input.value;
+  if (!date) return;
+  if (matchdayDates.includes(date)) return;
+  matchdayDates.push(date);
+  matchdayDates.sort();
+  input.value = '';
+  renderMatchdayDates();
+}
+
+function removeMatchdayDate(date) {
+  matchdayDates = matchdayDates.filter(d => d !== date);
+  renderMatchdayDates();
+}
+
+function renderMatchdayDates() {
+  const container = document.getElementById('md-dates-list');
+  if (!container) return;
+  const applyBtn = document.getElementById('md-apply-btn');
+
+  if (matchdayDates.length === 0) {
+    container.innerHTML = '<span style="font-size: 0.82rem; color: var(--sm-text-muted);">Brak wybranych dat</span>';
+    if (applyBtn) applyBtn.disabled = true;
+    return;
+  }
+
+  container.innerHTML = matchdayDates.map(d =>
+    `<span class="sm-matchday-date">${d} <button onclick="removeMatchdayDate('${d}')">&times;</button></span>`
+  ).join('');
+
+  if (applyBtn) applyBtn.disabled = false;
+}
+
+async function applyMatchdays() {
+  if (matchdayDates.length === 0) return;
+  if (!await smConfirm(`Zastosowac szablon meczowy do ${matchdayDates.length} dat?`)) return;
+
+  try {
+    await API.post('/schedule/matchdays/apply', { dates: matchdayDates });
+    matchdayDates = [];
+    renderMatchdayDates();
+    await loadExceptions();
+    await loadTimeline();
+    await smAlert('Daty meczowe dodane do wyjatkow!');
+  } catch (err) {
+    await smAlert('Blad: ' + err.message);
+  }
 }

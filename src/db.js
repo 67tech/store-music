@@ -41,6 +41,7 @@ function initSchema() {
       playlist_id INTEGER NOT NULL,
       track_id INTEGER NOT NULL,
       position INTEGER NOT NULL DEFAULT 0,
+      one_shot INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
       FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
     );
@@ -89,11 +90,23 @@ function initSchema() {
       value TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS roles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      description TEXT DEFAULT '',
+      permissions TEXT NOT NULL DEFAULT '{}',
+      is_system INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      role_id INTEGER DEFAULT NULL,
+      is_active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE SET NULL
     );
   `);
 
@@ -113,12 +126,142 @@ function initSchema() {
     seedHours();
   }
 
+  // Seed default roles
+  const roleCount = db.prepare('SELECT COUNT(*) as cnt FROM roles').get();
+  if (roleCount.cnt === 0) {
+    const insertRole = db.prepare('INSERT INTO roles (name, description, permissions, is_system) VALUES (?, ?, ?, ?)');
+    const seedRoles = db.transaction(() => {
+      insertRole.run('admin', 'Administrator - pelny dostep', JSON.stringify({
+        player_control: true,
+        playlist_manage: true,
+        playlist_add_tracks: true,
+        track_upload: true,
+        track_delete: true,
+        schedule_manage: true,
+        announcement_manage: true,
+        announcement_play: true,
+        settings_manage: true,
+        user_manage: true,
+        server_restart: true,
+      }), 1);
+      insertRole.run('manager', 'Manager - zarzadzanie muzyka i komunikatami', JSON.stringify({
+        player_control: true,
+        playlist_manage: true,
+        playlist_add_tracks: true,
+        track_upload: true,
+        track_delete: true,
+        schedule_manage: true,
+        announcement_manage: true,
+        announcement_play: true,
+        settings_manage: false,
+        user_manage: false,
+        server_restart: false,
+      }), 1);
+      insertRole.run('dj', 'DJ - odtwarzanie i playlisty', JSON.stringify({
+        player_control: true,
+        playlist_manage: true,
+        playlist_add_tracks: true,
+        track_upload: true,
+        track_delete: false,
+        schedule_manage: false,
+        announcement_manage: false,
+        announcement_play: true,
+        settings_manage: false,
+        user_manage: false,
+        server_restart: false,
+      }), 1);
+      insertRole.run('viewer', 'Podglad - tylko odsluch i podglad', JSON.stringify({
+        player_control: false,
+        playlist_manage: false,
+        playlist_add_tracks: false,
+        track_upload: false,
+        track_delete: false,
+        schedule_manage: false,
+        announcement_manage: false,
+        announcement_play: false,
+        settings_manage: false,
+        user_manage: false,
+        server_restart: false,
+      }), 1);
+    });
+    seedRoles();
+  }
+
   // Seed default admin user (admin / admin) — change password on first login!
   const userCount = db.prepare('SELECT COUNT(*) as cnt FROM users').get();
   if (userCount.cnt === 0) {
     const bcrypt = require('bcryptjs');
     const hash = bcrypt.hashSync('admin', 10);
-    db.prepare('INSERT INTO users (username, password) VALUES (?, ?)').run('admin', hash);
+    const adminRole = db.prepare('SELECT id FROM roles WHERE name = ?').get('admin');
+    db.prepare('INSERT INTO users (username, password, role_id) VALUES (?, ?, ?)').run('admin', hash, adminRole ? adminRole.id : null);
+  }
+
+  // Migration: add role_id to existing users without it
+  try {
+    db.prepare('SELECT role_id FROM users LIMIT 1').get();
+  } catch {
+    db.exec('ALTER TABLE users ADD COLUMN role_id INTEGER DEFAULT NULL REFERENCES roles(id) ON DELETE SET NULL');
+    db.exec('ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1');
+    const adminRole = db.prepare('SELECT id FROM roles WHERE name = ?').get('admin');
+    if (adminRole) {
+      db.prepare('UPDATE users SET role_id = ? WHERE role_id IS NULL').run(adminRole.id);
+    }
+  }
+
+  // Playback history table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS playback_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      track_id INTEGER,
+      title TEXT NOT NULL,
+      artist TEXT,
+      duration REAL DEFAULT 0,
+      played_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      one_shot INTEGER DEFAULT 0,
+      FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE SET NULL
+    )
+  `);
+
+  // Ads (Reklamy) tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      client_name TEXT DEFAULT '',
+      filepath TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      duration REAL DEFAULT 0,
+      schedule_mode TEXT NOT NULL DEFAULT 'count',
+      daily_target INTEGER DEFAULT 1,
+      interval_minutes INTEGER DEFAULT 60,
+      start_time TEXT DEFAULT '08:00',
+      end_time TEXT DEFAULT '20:00',
+      days_of_week TEXT NOT NULL DEFAULT '[1,2,3,4,5,6]',
+      priority INTEGER DEFAULT 5,
+      is_active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Migration: add play_mode column to ads
+  try {
+    getDb().prepare('SELECT play_mode FROM ads LIMIT 1').get();
+  } catch {
+    getDb().exec("ALTER TABLE ads ADD COLUMN play_mode TEXT NOT NULL DEFAULT 'queue'");
+  }
+
+  // Migration: add play_mode column to scheduled_announcements
+  try {
+    getDb().prepare('SELECT play_mode FROM scheduled_announcements LIMIT 1').get();
+  } catch {
+    getDb().exec("ALTER TABLE scheduled_announcements ADD COLUMN play_mode TEXT NOT NULL DEFAULT 'interrupt'");
+  }
+
+  // Migration: add one_shot column to playlist_tracks
+  try {
+    db.prepare('SELECT one_shot FROM playlist_tracks LIMIT 1').get();
+  } catch {
+    db.exec('ALTER TABLE playlist_tracks ADD COLUMN one_shot INTEGER NOT NULL DEFAULT 0');
   }
 
   // Seed default settings

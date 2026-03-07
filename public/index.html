@@ -4,135 +4,348 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Store Music Manager</title>
-  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/style.css?v=20260307s">
 </head>
 <body>
   <div class="sm-app">
-    <header class="sm-header">
-      <h1>Store Music Manager</h1>
-      <small>Panel zarządzania muzyką w sklepie</small>
-      <div class="sm-user-bar">
-        <span id="user-info"></span>
-        <button onclick="changePassword()" class="sm-btn sm-btn--small">Zmień hasło</button>
-        <button onclick="logout()" class="sm-btn sm-btn--danger sm-btn--small">Wyloguj</button>
-      </div>
-    </header>
 
-    <!-- Player - always visible -->
+    <!-- ===== Top Bar ===== -->
+    <div class="sm-topbar">
+      <span class="sm-logo">Store Music</span>
+      <div class="sm-topbar-right">
+        <span id="user-info" class="sm-topbar-user"></span>
+        <button onclick="changePassword()" class="sm-topbar-btn">Zmien haslo</button>
+        <button onclick="logout()" class="sm-topbar-btn sm-topbar-btn--danger">Wyloguj</button>
+      </div>
+    </div>
+
+    <!-- ===== Player (hero, always visible) ===== -->
     <div class="sm-player">
-      <div class="sm-player-info">
+      <div class="sm-player-side sm-player-time-side">
+        <div class="sm-player-ring">
+          <span class="sm-player-elapsed-big" id="player-elapsed">0:00</span>
+          <span class="sm-player-duration-small" id="player-duration">0:00</span>
+        </div>
+      </div>
+
+      <div class="sm-player-center">
         <span id="player-status" class="sm-status sm-status--stopped">stopped</span>
-        <h2 id="player-track-title">Brak utworu</h2>
-        <div class="sm-artist" id="player-track-artist"></div>
-        <div class="sm-player-playlist">Playlista: <span id="player-playlist-name">-</span></div>
-      </div>
+        <div class="sm-player-title" id="player-track-title">Brak utworu</div>
+        <div class="sm-player-artist" id="player-track-artist"></div>
+        <div class="sm-player-playlist-label">Playlista: <span id="player-playlist-name">-</span></div>
 
-      <div class="sm-progress-container">
-        <span class="sm-time" id="player-elapsed">0:00</span>
-        <div class="sm-progress-bar" id="player-progress-bar">
-          <div class="sm-progress-fill" id="player-progress" style="width: 0%"></div>
-        </div>
-        <span class="sm-time" id="player-duration">0:00</span>
-      </div>
-
-      <div class="sm-controls">
-        <button id="btn-prev" title="Poprzedni">&#9198;</button>
-        <button id="btn-play" class="sm-btn-main" title="Odtwórz">&#9654;</button>
-        <button id="btn-pause" title="Pauza">&#9208;</button>
-        <button id="btn-stop" title="Stop">&#9209;</button>
-        <button id="btn-next" title="Następny">&#9197;</button>
-      </div>
-
-      <div class="sm-volume">
-        <label>&#128266;</label>
-        <input type="range" id="player-volume" min="0" max="100" value="50">
-        <span class="sm-vol-val" id="player-volume-val">50</span>
-      </div>
-    </div>
-
-    <!-- Navigation -->
-    <nav class="sm-nav">
-      <button class="sm-nav-tab sm-nav-tab--active" data-tab="playlists">Playlisty</button>
-      <button class="sm-nav-tab" data-tab="tracks">Utwory</button>
-      <button class="sm-nav-tab" data-tab="schedule">Harmonogram</button>
-      <button class="sm-nav-tab" data-tab="announcements">Komunikaty</button>
-    </nav>
-
-    <!-- Playlists section -->
-    <div id="section-playlists" class="sm-section sm-section--active">
-      <div class="sm-section-header">
-        <h2>Playlisty</h2>
-        <button id="btn-create-playlist" class="sm-btn">+ Nowa playlista</button>
-      </div>
-      <div id="playlists-list"></div>
-    </div>
-
-    <!-- Tracks section -->
-    <div id="section-tracks" class="sm-section">
-      <div class="sm-section-header">
-        <h2>Biblioteka utworów</h2>
-        <button id="btn-upload-track" class="sm-btn">+ Wgraj pliki</button>
-        <input type="file" id="track-file-input" accept=".mp3,.wav,.ogg,.flac" multiple>
-      </div>
-      <div id="tracks-list"></div>
-    </div>
-
-    <!-- Schedule section -->
-    <div id="section-schedule" class="sm-section">
-      <div class="sm-section-block">
-        <div class="sm-section-header">
-          <h2>Plan dnia</h2>
-          <input type="date" id="timeline-date" class="sm-btn sm-btn--small" style="padding: 4px 8px;">
-        </div>
-        <div id="timeline-container"></div>
-      </div>
-
-      <div class="sm-section-block">
-        <h2>Godziny otwarcia</h2>
-        <div id="store-hours"></div>
-      </div>
-
-      <div class="sm-section-block">
-        <div class="sm-section-header">
-          <h3>Wyjątki (święta, skrócone godziny)</h3>
-          <button id="btn-add-exception" class="sm-btn sm-btn--small">+ Dodaj wyjątek</button>
-        </div>
-        <div id="exceptions-list"></div>
-      </div>
-
-      <div class="sm-section-block">
-        <h3>Ustawienia</h3>
-        <div id="app-settings"></div>
-      </div>
-
-      <div class="sm-section-block">
-        <h3>Serwis</h3>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button onclick="restartPlayer()" class="sm-btn sm-btn--small" title="Restartuje silnik audio (mpv)">Restart playera</button>
-          <button onclick="restartServer()" class="sm-btn sm-btn--danger sm-btn--small" title="Restartuje caly serwer aplikacji">Restart serwera</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Announcements section -->
-    <div id="section-announcements" class="sm-section">
-      <div class="sm-section-block">
-        <div class="sm-section-header">
-          <h2>Komunikaty</h2>
-          <div style="display: flex; gap: 6px;">
-            <button id="btn-upload-announcement" class="sm-btn sm-btn--small">+ Wgraj audio</button>
-            <input type="file" id="announcement-file-input" accept=".mp3,.wav,.ogg,.flac">
-            <button id="btn-create-tts" class="sm-btn sm-btn--small">+ Generuj TTS</button>
+        <div class="sm-progress-container">
+          <div class="sm-progress-bar" id="player-progress-bar">
+            <div class="sm-progress-fill" id="player-progress" style="transform: scaleX(0)"></div>
           </div>
         </div>
-        <div id="announcements-list"></div>
+
+        <div class="sm-controls">
+          <button id="btn-prev" title="Poprzedni">&#9198;</button>
+          <button id="btn-play" class="sm-btn-main" title="Odtworz">&#9654;</button>
+          <button id="btn-pause" title="Pauza">&#9208;</button>
+          <button id="btn-stop" title="Stop">&#9209;</button>
+          <button id="btn-next" title="Nastepny">&#9197;</button>
+        </div>
       </div>
 
-      <div class="sm-section-block">
-        <h3>Zaplanowane komunikaty</h3>
-        <div id="scheduled-announcements-list"></div>
+      <div class="sm-player-side sm-player-vol-side">
+        <div class="sm-player-ring">
+          <span class="sm-player-vol-big" id="player-volume-val">50</span>
+          <span class="sm-player-vol-label">/100</span>
+        </div>
+        <input type="range" id="player-volume" min="0" max="100" value="50" class="sm-vol-slider">
       </div>
     </div>
+
+    <!-- ===== Horizontal Timeline (under player) ===== -->
+    <div class="sm-htimeline" id="htimeline-bar"></div>
+
+    <!-- ===== Navigation ===== -->
+    <nav class="sm-nav">
+      <button class="sm-nav-tab sm-nav-tab--active" data-tab="playlists">
+        <span class="sm-nav-icon">&#9835;</span>
+        <span class="sm-nav-label">Playlisty</span>
+      </button>
+      <button class="sm-nav-tab" data-tab="tracks">
+        <span class="sm-nav-icon">&#128190;</span>
+        <span class="sm-nav-label">Utwory</span>
+      </button>
+      <button class="sm-nav-tab" data-tab="schedule">
+        <span class="sm-nav-icon">&#128339;</span>
+        <span class="sm-nav-label">Harmonogram</span>
+      </button>
+      <button class="sm-nav-tab" data-tab="announcements">
+        <span class="sm-nav-icon">&#128227;</span>
+        <span class="sm-nav-label">Komunikaty</span>
+      </button>
+      <button class="sm-nav-tab" data-tab="radio">
+        <span class="sm-nav-icon">&#128251;</span>
+        <span class="sm-nav-label">Radio</span>
+      </button>
+      <button class="sm-nav-tab" data-tab="youtube">
+        <span class="sm-nav-icon">&#9654;&#65039;</span>
+        <span class="sm-nav-label">YouTube</span>
+      </button>
+      <button class="sm-nav-tab" data-tab="ads">
+        <span class="sm-nav-icon">&#128226;</span>
+        <span class="sm-nav-label">Reklamy</span>
+      </button>
+      <button class="sm-nav-tab" data-tab="history">
+        <span class="sm-nav-icon">&#128214;</span>
+        <span class="sm-nav-label">Historia</span>
+      </button>
+      <button class="sm-nav-tab" data-tab="users" id="nav-users">
+        <span class="sm-nav-icon">&#128101;</span>
+        <span class="sm-nav-label">Uzytkownicy</span>
+      </button>
+    </nav>
+
+    <!-- ===== Content sections ===== -->
+    <div class="sm-content">
+
+      <!-- Playlists -->
+      <div id="section-playlists" class="sm-section sm-section--active">
+        <div class="sm-grid">
+          <div class="sm-grid-main">
+            <div class="sm-section-header">
+              <h2>Obecna playlista</h2>
+              <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                <select id="playlist-selector" class="sm-input" style="min-width: 140px; max-width: 200px;"></select>
+                <button onclick="playSelectedPlaylist()" class="sm-btn sm-btn--play sm-btn--small" title="Odtwórz wybraną playlistę">&#9654;</button>
+                <button onclick="addAllTracksToPlaylist()" class="sm-btn sm-btn--small" title="Dodaj wszystkie utwory do playlisty">+ Wszystkie</button>
+                <button id="btn-loop-toggle" class="sm-btn sm-btn--small sm-btn--loop sm-btn--loop-on" onclick="toggleLoop()" title="Zapętlenie playlisty">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                </button>
+                <button onclick="clearCurrentPlaylist()" class="sm-btn sm-btn--danger sm-btn--small" title="Wyczysc playlistę">&#128465;</button>
+                <button id="btn-create-playlist" class="sm-btn sm-btn--small">+ Nowa</button>
+              </div>
+            </div>
+            <div id="current-playlist-tracks"></div>
+            <div class="sm-section-header" style="margin-top: 24px;">
+              <h2>Wszystkie playlisty</h2>
+            </div>
+            <div id="playlists-list"></div>
+          </div>
+          <div class="sm-grid-side">
+            <div class="sm-card sm-card--sticky">
+              <div class="sm-card-header"><h3>Zaplanowane reklamy</h3></div>
+              <div id="scheduled-ads-panel"></div>
+            </div>
+            <div class="sm-card sm-card--sticky" style="margin-top: 12px;">
+              <div class="sm-card-header"><h3>Zaplanowane komunikaty</h3></div>
+              <div id="scheduled-announcements-panel"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tracks -->
+      <div id="section-tracks" class="sm-section">
+        <div class="sm-section-header">
+          <h2>Biblioteka utworow</h2>
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <button id="btn-upload-track" class="sm-btn sm-btn--small">+ Wgraj pliki</button>
+            <input type="file" id="track-file-input" accept=".mp3,.wav,.ogg,.flac" multiple>
+          </div>
+        </div>
+        <div id="tracks-list"></div>
+      </div>
+
+      <!-- Schedule -->
+      <div id="section-schedule" class="sm-section">
+        <div class="sm-grid">
+          <div class="sm-grid-main">
+            <div class="sm-card">
+              <div class="sm-card-header"><h2>Godziny otwarcia</h2></div>
+              <div id="store-hours"></div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-header">
+                <h3>Wyjatki (swieta, skrocone godziny)</h3>
+                <button id="btn-add-exception" class="sm-btn sm-btn--small">+ Dodaj wyjatek</button>
+              </div>
+              <div id="exceptions-list"></div>
+            </div>
+
+            <div class="sm-card">
+              <div class="sm-card-header"><h3>Dni meczowe</h3></div>
+              <div id="matchday-section"></div>
+            </div>
+
+            <div class="sm-card sm-card--collapsed" id="card-settings">
+              <div class="sm-card-header sm-card-header--toggle" onclick="toggleCard('card-settings')">
+                <h3>Ustawienia</h3>
+                <span class="sm-card-toggle">&#9660;</span>
+              </div>
+              <div class="sm-card-body">
+                <div id="app-settings"></div>
+              </div>
+            </div>
+
+            <div class="sm-card sm-card--collapsed" id="card-serwis">
+              <div class="sm-card-header sm-card-header--toggle" onclick="toggleCard('card-serwis')">
+                <h3>Serwis</h3>
+                <span class="sm-card-toggle">&#9660;</span>
+              </div>
+              <div class="sm-card-body">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; padding: 8px 0;">
+                  <button onclick="restartPlayer()" class="sm-btn sm-btn--small">Restart playera</button>
+                  <button onclick="restartServer()" class="sm-btn sm-btn--danger sm-btn--small">Restart serwera</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sm-grid-side">
+            <div class="sm-card sm-card--sticky">
+              <div class="sm-card-header">
+                <h3>Plan dnia</h3>
+                <input type="date" id="timeline-date" class="sm-input-inline">
+              </div>
+              <div id="timeline-container"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Announcements -->
+      <div id="section-announcements" class="sm-section">
+        <div class="sm-grid">
+          <div class="sm-grid-main">
+            <div class="sm-card">
+              <div class="sm-card-header">
+                <h2>Komunikaty</h2>
+                <div style="display: flex; gap: 6px;">
+                  <button id="btn-upload-announcement" class="sm-btn sm-btn--small">+ Wgraj audio</button>
+                  <input type="file" id="announcement-file-input" accept=".mp3,.wav,.ogg,.flac">
+                  <button id="btn-create-tts" class="sm-btn sm-btn--small">+ Generuj TTS</button>
+                </div>
+              </div>
+              <div id="announcements-list"></div>
+            </div>
+          </div>
+          <div class="sm-grid-side">
+            <div class="sm-card sm-card--sticky">
+              <div class="sm-card-header"><h3>Zaplanowane komunikaty</h3></div>
+              <div id="scheduled-announcements-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Radio -->
+      <div id="section-radio" class="sm-section">
+        <div class="sm-section-header">
+          <h2>Radio internetowe</h2>
+        </div>
+        <div class="sm-radio-search">
+          <input type="text" id="radio-search-input" placeholder="Szukaj stacji..." class="sm-input">
+          <button onclick="searchRadio()" class="sm-btn sm-btn--small sm-btn--primary">Szukaj</button>
+        </div>
+        <div id="radio-stations"></div>
+      </div>
+
+      <!-- YouTube -->
+      <div id="section-youtube" class="sm-section">
+        <div class="sm-section-header">
+          <h2>Import z YouTube</h2>
+        </div>
+        <div class="sm-yt-import">
+          <div class="sm-form-row" style="display: flex; gap: 8px; align-items: flex-end;">
+            <label style="flex: 1;">URL playlisty lub filmu:
+              <input type="text" id="yt-url" placeholder="https://www.youtube.com/playlist?list=..." class="sm-input">
+            </label>
+            <button onclick="ytFetchInfo()" class="sm-btn sm-btn--primary" id="yt-fetch-btn">Pobierz info</button>
+          </div>
+          <div class="sm-form-row">
+            <label>Dodaj do playlisty:
+              <select id="yt-playlist-select" class="sm-input"><option value="">-- nie dodawaj --</option></select>
+            </label>
+          </div>
+          <div id="yt-status" style="margin: 8px 0;"></div>
+          <div id="yt-tracks"></div>
+        </div>
+      </div>
+
+      <!-- Ads -->
+      <div id="section-ads" class="sm-section">
+        <div class="sm-grid">
+          <div class="sm-grid-main">
+            <div class="sm-card">
+              <div class="sm-card-header">
+                <h2>Reklamy / Spoty</h2>
+                <div style="display: flex; gap: 6px;">
+                  <button onclick="showAdUpload()" class="sm-btn sm-btn--small">+ Dodaj reklame</button>
+                  <input type="file" id="ad-file-input" accept=".mp3,.wav,.ogg,.flac" style="display:none;">
+                </div>
+              </div>
+              <div id="ads-list"></div>
+            </div>
+          </div>
+          <div class="sm-grid-side">
+            <div class="sm-card sm-card--sticky">
+              <div class="sm-card-header">
+                <h3>Raport odtworzen</h3>
+              </div>
+              <div style="padding: 8px 12px;">
+                <div class="sm-form-row" style="display:flex;gap:6px;align-items:flex-end;">
+                  <label style="flex:1;">Od: <input type="date" id="ad-report-start" class="sm-input"></label>
+                  <label style="flex:1;">Do: <input type="date" id="ad-report-end" class="sm-input"></label>
+                </div>
+                <div style="display:flex;gap:6px;margin-top:8px;">
+                  <button onclick="loadAdReport()" class="sm-btn sm-btn--small sm-btn--primary">Pokaz</button>
+                  <button onclick="exportAdReportCsv()" class="sm-btn sm-btn--small">CSV</button>
+                </div>
+              </div>
+              <div id="ad-report"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div id="section-history" class="sm-section">
+        <div class="sm-section-header">
+          <h2>Historia odtwarzania</h2>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="date" id="history-date" class="sm-input" style="max-width: 160px;">
+            <button onclick="loadHistory()" class="sm-btn sm-btn--small sm-btn--primary">Pokaz</button>
+          </div>
+        </div>
+        <div id="history-stats" style="margin-bottom: 12px;"></div>
+        <div id="history-list"></div>
+        <div id="history-dates" style="margin-top: 16px;"></div>
+      </div>
+
+      <!-- Users -->
+      <div id="section-users" class="sm-section">
+        <div class="sm-grid">
+          <div class="sm-grid-main">
+            <div class="sm-card">
+              <div class="sm-card-header">
+                <h2>Uzytkownicy</h2>
+                <button onclick="addUser()" class="sm-btn sm-btn--small">+ Dodaj uzytkownika</button>
+              </div>
+              <div id="users-list"></div>
+            </div>
+          </div>
+          <div class="sm-grid-side">
+            <div class="sm-card sm-card--sticky">
+              <div class="sm-card-header">
+                <h3>Role</h3>
+                <button onclick="addRole()" class="sm-btn sm-btn--small">+ Nowa rola</button>
+              </div>
+              <div id="roles-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /sm-content -->
+
+    <footer class="sm-footer">Proudly created by dS with AI</footer>
   </div>
 
   <!-- Modal -->
@@ -144,11 +357,16 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/api.js"></script>
-  <script src="/js/player.js"></script>
-  <script src="/js/playlists.js"></script>
-  <script src="/js/schedule.js"></script>
-  <script src="/js/announcements.js"></script>
-  <script src="/js/app.js"></script>
+  <script src="/js/api.js?v=20260307s"></script>
+  <script src="/js/player.js?v=20260307s"></script>
+  <script src="/js/playlists.js?v=20260307s"></script>
+  <script src="/js/schedule.js?v=20260307s"></script>
+  <script src="/js/announcements.js?v=20260307s"></script>
+  <script src="/js/users.js?v=20260307s"></script>
+  <script src="/js/radio.js?v=20260307s"></script>
+  <script src="/js/youtube.js?v=20260307s"></script>
+  <script src="/js/ads.js?v=20260307s"></script>
+  <script src="/js/history.js?v=20260307s"></script>
+  <script src="/js/app.js?v=20260307s"></script>
 </body>
 </html>

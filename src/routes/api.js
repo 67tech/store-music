@@ -6,5 +6,9 @@ router.use('/playlists', require('./playlists'));
 router.use('/player', require('./player'));
 router.use('/schedule', require('./schedule'));
 router.use('/announcements', require('./announcements'));
+router.use('/users', require('./users'));
+router.use('/youtube', require('./youtube'));
+router.use('/radio', require('./radio'));
+router.use('/ads', require('./ads'));
 
 module.exports = router;

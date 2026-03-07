@@ -1,6 +1,8 @@
 async function initAnnouncements() {
   await loadAnnouncements();
   await loadScheduledAnnouncements();
+  loadScheduledAnnouncementsPanel();
+  setInterval(loadScheduledAnnouncementsPanel, 60000);
 
   document.getElementById('btn-upload-announcement').onclick = () => document.getElementById('announcement-file-input').click();
   document.getElementById('announcement-file-input').onchange = uploadAnnouncement;
@@ -74,16 +76,20 @@ async function loadScheduledAnnouncements() {
       triggerDisplay = sa.trigger_value + ' min';
     }
 
+    const playModeLabel = (sa.play_mode || 'interrupt') === 'queue' ? 'Kolejka' : 'Przerwij';
+    const playModeIcon = (sa.play_mode || 'interrupt') === 'queue' ? '&#9654;' : '&#9889;';
+
     const div = document.createElement('div');
     div.className = `sm-scheduled-card ${sa.is_active ? '' : 'sm-scheduled-card--inactive'}`;
     div.innerHTML = `
       <div class="sm-scheduled-info">
         <strong>${esc(sa.announcement_name)}</strong>
         <span>${triggerLabels[sa.trigger_type] || sa.trigger_type}: ${triggerDisplay}</span>
-        <small>${daysInfo}</small>
+        <small>${daysInfo} · ${playModeIcon} ${playModeLabel}</small>
         ${sa.volume_override ? `<small>Głośność: ${sa.volume_override}%</small>` : ''}
       </div>
       <div class="sm-scheduled-actions">
+        <button onclick="editScheduled(${sa.id})" class="sm-btn sm-btn--small">Edytuj</button>
         <button onclick="toggleScheduledActive(${sa.id}, ${sa.is_active ? 0 : 1})" class="sm-btn sm-btn--small">${sa.is_active ? 'Wyłącz' : 'Włącz'}</button>
         <button onclick="deleteScheduled(${sa.id})" class="sm-btn sm-btn--danger sm-btn--small">&#10005;</button>
       </div>
@@ -117,12 +123,33 @@ async function createTts() {
       <textarea id="tts-text" rows="4" placeholder="Szanowni Państwo, informujemy że sklep zostanie zamknięty za 30 minut..."></textarea>
     </div>
     <div class="sm-form-row"><label>Silnik:
-      <select id="tts-engine">
+      <select id="tts-engine" onchange="onTtsEngineChange()">
+        <option value="edge">Edge TTS (najlepsze głosy)</option>
         <option value="google">Google TTS</option>
         <option value="piper">Piper (offline)</option>
       </select>
     </label></div>
-    <div class="sm-form-row"><label>Język:
+    <div class="sm-form-row" id="ins-tts-voice-row">
+      <label>Głos:
+        <select id="ins-tts-voice">
+          <optgroup label="Polski">
+            <option value="pl-PL-ZofiaNeural" selected>Zofia (kobieta, PL)</option>
+            <option value="pl-PL-MarekNeural">Marek (mężczyzna, PL)</option>
+          </optgroup>
+          <optgroup label="English">
+            <option value="en-US-JennyNeural">Jenny (female, US)</option>
+            <option value="en-US-GuyNeural">Guy (male, US)</option>
+            <option value="en-GB-SoniaNeural">Sonia (female, UK)</option>
+            <option value="en-GB-RyanNeural">Ryan (male, UK)</option>
+          </optgroup>
+          <optgroup label="Deutsch">
+            <option value="de-DE-KatjaNeural">Katja (weiblich, DE)</option>
+            <option value="de-DE-ConradNeural">Conrad (männlich, DE)</option>
+          </optgroup>
+        </select>
+      </label>
+    </div>
+    <div class="sm-form-row" id="ins-tts-lang-row" style="display:none;"><label>Język:
       <select id="tts-lang">
         <option value="pl">Polski</option>
         <option value="en">English</option>
@@ -138,12 +165,14 @@ async function createTts() {
     if (!text) { await smAlert('Wpisz tekst!'); return; }
 
     document.getElementById('tts-status').textContent = 'Generowanie...';
+    const engine = document.getElementById('tts-engine').value;
     try {
       await API.post('/announcements/tts', {
         name: document.getElementById('tts-name').value || text.substring(0, 50),
         text,
-        engine: document.getElementById('tts-engine').value,
-        language: document.getElementById('tts-lang').value,
+        engine,
+        language: engine !== 'edge' ? document.getElementById('tts-lang').value : undefined,
+        voice: engine === 'edge' ? document.getElementById('ins-tts-voice').value : undefined,
       });
       modal.classList.remove('sm-modal--open');
       await loadAnnouncements();
@@ -265,6 +294,12 @@ async function scheduleAnnouncementPrompt(announcementId) {
       </div>
     </div>
     <div class="sm-form-row"><label>Głośność (opcjonalnie): <input type="number" id="sched-volume" placeholder="np. 80" min="0" max="100"></label></div>
+    <div class="sm-form-row"><label>Tryb odtwarzania:
+      <select id="sched-playmode" class="sm-input">
+        <option value="interrupt">Przerwij (natychmiastowe odtworzenie)</option>
+        <option value="queue">Kolejka (po biezacym utworze)</option>
+      </select>
+    </label></div>
     <button id="sched-save" class="sm-btn sm-btn--primary">Zapisz</button>
   `;
 
@@ -289,7 +324,7 @@ async function scheduleAnnouncementPrompt(announcementId) {
       const time = document.getElementById('sched-date-time').value;
       if (!date || !time) { await smAlert('Wybierz datę i godzinę!'); return; }
       triggerValue = `${date} ${time}`;
-      days = [0, 1, 2, 3, 4, 5, 6]; // ignored for specific_date but required by schema
+      days = [0, 1, 2, 3, 4, 5, 6];
     } else if (type === 'fixed_time') {
       triggerValue = document.getElementById('sched-time').value;
       days = [...document.querySelectorAll('.sm-days-checkboxes input:checked')].map(cb => parseInt(cb.value));
@@ -307,6 +342,115 @@ async function scheduleAnnouncementPrompt(announcementId) {
       days_of_week: days,
       is_active: true,
       volume_override: volume ? parseInt(volume) : null,
+      play_mode: document.getElementById('sched-playmode').value,
+    });
+
+    modal.classList.remove('sm-modal--open');
+    await loadScheduledAnnouncements();
+  };
+
+  modal.classList.add('sm-modal--open');
+}
+
+async function editScheduled(id) {
+  const scheduled = await API.get('/announcements/scheduled');
+  const sa = scheduled.find(s => s.id === id);
+  if (!sa) return;
+
+  const modal = document.getElementById('modal');
+  const modalBody = document.getElementById('modal-body');
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const isRelative = sa.trigger_type === 'before_close' || sa.trigger_type === 'after_open';
+  const isFixed = sa.trigger_type === 'fixed_time';
+  const isSpecific = sa.trigger_type === 'specific_date';
+
+  let days = [];
+  try { days = JSON.parse(sa.days_of_week); } catch {}
+
+  let dateVal = '', dateTimeVal = '14:00';
+  if (isSpecific && sa.trigger_value) {
+    const parts = sa.trigger_value.split(' ');
+    dateVal = parts[0] || '';
+    dateTimeVal = parts[1] || '14:00';
+  }
+
+  modalBody.innerHTML = `
+    <h2>Edytuj zaplanowany komunikat</h2>
+    <div class="sm-form-row"><label>Typ wyzwalacza:
+      <select id="sched-type" onchange="schedTypeChange()">
+        <option value="before_close" ${sa.trigger_type === 'before_close' ? 'selected' : ''}>Przed zamknięciem</option>
+        <option value="after_open" ${sa.trigger_type === 'after_open' ? 'selected' : ''}>Po otwarciu</option>
+        <option value="fixed_time" ${sa.trigger_type === 'fixed_time' ? 'selected' : ''}>O stałej godzinie (cyklicznie)</option>
+        <option value="specific_date" ${sa.trigger_type === 'specific_date' ? 'selected' : ''}>Konkretna data z kalendarza</option>
+      </select>
+    </label></div>
+    <div class="sm-form-row" id="sched-minutes-row" style="${isRelative ? '' : 'display:none'}">
+      <label>Minuty: <input type="number" id="sched-minutes" value="${isRelative ? sa.trigger_value : '30'}" min="1" max="480"></label>
+    </div>
+    <div class="sm-form-row" id="sched-time-row" style="${isFixed ? '' : 'display:none'}">
+      <label>Godzina: <input type="time" id="sched-time" value="${isFixed ? sa.trigger_value : '14:00'}"></label>
+    </div>
+    <div class="sm-form-row" id="sched-date-row" style="${isSpecific ? '' : 'display:none'}">
+      <label>Data: <input type="date" id="sched-date" value="${dateVal}" min="${todayStr}"></label>
+      <label style="margin-top:8px">Godzina: <input type="time" id="sched-date-time" value="${dateTimeVal}"></label>
+    </div>
+    <div class="sm-form-row" id="sched-days-row" style="${isSpecific ? 'display:none' : ''}"><label>Dni tygodnia:</label>
+      <div class="sm-days-checkboxes">
+        ${DAY_NAMES.map((name, i) => `<label><input type="checkbox" value="${i}" ${days.includes(i) ? 'checked' : ''}> ${name.substring(0, 3)}</label>`).join('')}
+      </div>
+    </div>
+    <div class="sm-form-row"><label>Głośność (opcjonalnie): <input type="number" id="sched-volume" value="${sa.volume_override || ''}" placeholder="np. 80" min="0" max="100"></label></div>
+    <div class="sm-form-row"><label>Tryb odtwarzania:
+      <select id="sched-playmode" class="sm-input">
+        <option value="interrupt" ${(sa.play_mode || 'interrupt') === 'interrupt' ? 'selected' : ''}>Przerwij (natychmiastowe odtworzenie)</option>
+        <option value="queue" ${sa.play_mode === 'queue' ? 'selected' : ''}>Kolejka (po biezacym utworze)</option>
+      </select>
+    </label></div>
+    <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px;">
+      <button class="sm-btn" style="background: var(--sm-border); color: var(--sm-text);" onclick="document.getElementById('modal').classList.remove('sm-modal--open')">Anuluj</button>
+      <button id="sched-save" class="sm-btn sm-btn--primary">Zapisz</button>
+    </div>
+  `;
+
+  window.schedTypeChange = () => {
+    const type = document.getElementById('sched-type').value;
+    const isSp = type === 'specific_date';
+    const isFx = type === 'fixed_time';
+    const isRl = type === 'before_close' || type === 'after_open';
+    document.getElementById('sched-minutes-row').style.display = isRl ? '' : 'none';
+    document.getElementById('sched-time-row').style.display = isFx ? '' : 'none';
+    document.getElementById('sched-date-row').style.display = isSp ? '' : 'none';
+    document.getElementById('sched-days-row').style.display = isSp ? 'none' : '';
+  };
+
+  document.getElementById('sched-save').onclick = async () => {
+    const type = document.getElementById('sched-type').value;
+    let triggerValue;
+    let daysOfWeek;
+
+    if (type === 'specific_date') {
+      const date = document.getElementById('sched-date').value;
+      const time = document.getElementById('sched-date-time').value;
+      if (!date || !time) { await smAlert('Wybierz datę i godzinę!'); return; }
+      triggerValue = `${date} ${time}`;
+      daysOfWeek = [0, 1, 2, 3, 4, 5, 6];
+    } else if (type === 'fixed_time') {
+      triggerValue = document.getElementById('sched-time').value;
+      daysOfWeek = [...document.querySelectorAll('.sm-days-checkboxes input:checked')].map(cb => parseInt(cb.value));
+    } else {
+      triggerValue = document.getElementById('sched-minutes').value;
+      daysOfWeek = [...document.querySelectorAll('.sm-days-checkboxes input:checked')].map(cb => parseInt(cb.value));
+    }
+
+    const volume = document.getElementById('sched-volume').value;
+
+    await API.put(`/announcements/scheduled/${id}`, {
+      trigger_type: type,
+      trigger_value: triggerValue,
+      days_of_week: daysOfWeek,
+      volume_override: volume ? parseInt(volume) : null,
+      play_mode: document.getElementById('sched-playmode').value,
     });
 
     modal.classList.remove('sm-modal--open');
@@ -325,4 +469,40 @@ async function deleteScheduled(id) {
   if (!await smConfirm('Usunąć zaplanowany komunikat?')) return;
   await API.del(`/announcements/scheduled/${id}`);
   await loadScheduledAnnouncements();
+}
+
+async function loadScheduledAnnouncementsPanel() {
+  const container = document.getElementById('scheduled-announcements-panel');
+  if (!container) return;
+
+  try {
+    const upcoming = await API.get('/announcements/upcoming');
+    if (upcoming.length === 0) {
+      container.innerHTML = '<p class="sm-empty" style="padding:8px 12px;">Brak zaplanowanych komunikatów na dziś.</p>';
+      return;
+    }
+
+    let html = '<div style="padding:4px 0;">';
+    for (const ann of upcoming) {
+      const modeIcon = ann.play_mode === 'interrupt' ? '&#9889;' : '&#9654;';
+      const modeTitle = ann.play_mode === 'interrupt' ? 'Przerwij bieżący utwór' : 'Po bieżącym utworze';
+      const playedClass = ann.played ? ' sm-scheduled-ad--played' : '';
+
+      html += `<div class="sm-scheduled-ad${playedClass}">
+        <div class="sm-scheduled-ad-time">${ann.trigger_time}</div>
+        <div class="sm-scheduled-ad-info">
+          <div class="sm-scheduled-ad-title">${esc(ann.announcement_name)}</div>
+          <div class="sm-scheduled-ad-meta">
+            ${ann.trigger_label}
+            <span title="${modeTitle}" style="margin-left:4px;">${modeIcon}</span>
+          </div>
+        </div>
+        ${ann.played ? '<div class="sm-scheduled-ad-remaining" style="color:#16a34a;">&#10003;</div>' : ''}
+      </div>`;
+    }
+    html += '</div>';
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<div style="color:#dc2626;padding:8px 12px;font-size:0.85rem;">${esc(err.message)}</div>`;
+  }
 }

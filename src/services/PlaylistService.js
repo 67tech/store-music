@@ -3,7 +3,20 @@ const { getDb } = require('../db');
 class PlaylistService {
   // --- Tracks ---
   getAllTracks() {
-    return getDb().prepare('SELECT * FROM tracks ORDER BY created_at DESC').all();
+    const tracks = getDb().prepare("SELECT * FROM tracks WHERE artist NOT IN ('Komunikat', 'Reklama') AND title NOT LIKE '[Komunikat]%' AND title NOT LIKE '[Reklama]%' ORDER BY created_at DESC").all();
+    // Attach playlist membership for each track
+    const memberships = getDb().prepare(`
+      SELECT pt.track_id, p.id as playlist_id, p.name as playlist_name
+      FROM playlist_tracks pt
+      JOIN playlists p ON p.id = pt.playlist_id
+      ORDER BY p.name
+    `).all();
+    const map = {};
+    for (const m of memberships) {
+      if (!map[m.track_id]) map[m.track_id] = [];
+      map[m.track_id].push({ id: m.playlist_id, name: m.playlist_name });
+    }
+    return tracks.map(t => ({ ...t, playlists: map[t.id] || [] }));
   }
 
   getTrack(id) {
@@ -44,7 +57,7 @@ class PlaylistService {
     const playlist = getDb().prepare('SELECT * FROM playlists WHERE id = ?').get(id);
     if (!playlist) return null;
     playlist.tracks = getDb().prepare(`
-      SELECT t.*, pt.position, pt.id as playlist_track_id
+      SELECT t.*, pt.position, pt.id as playlist_track_id, pt.one_shot
       FROM playlist_tracks pt
       JOIN tracks t ON t.id = pt.track_id
       WHERE pt.playlist_id = ?
@@ -90,20 +103,30 @@ class PlaylistService {
   }
 
   // --- Playlist Tracks ---
-  addTrackToPlaylist(playlistId, trackId, position) {
+  addTrackToPlaylist(playlistId, trackId, position, oneShot = false) {
     if (position === undefined || position === null) {
       const max = getDb().prepare('SELECT MAX(position) as maxPos FROM playlist_tracks WHERE playlist_id = ?').get(playlistId);
       position = (max.maxPos ?? -1) + 1;
     }
     getDb().prepare(
-      'INSERT INTO playlist_tracks (playlist_id, track_id, position) VALUES (?, ?, ?)'
-    ).run(playlistId, trackId, position);
+      'INSERT INTO playlist_tracks (playlist_id, track_id, position, one_shot) VALUES (?, ?, ?, ?)'
+    ).run(playlistId, trackId, position, oneShot ? 1 : 0);
     return this.getPlaylist(playlistId);
+  }
+
+  removeOneShotTrack(playlistId, trackId) {
+    getDb().prepare('DELETE FROM playlist_tracks WHERE playlist_id = ? AND track_id = ? AND one_shot = 1').run(playlistId, trackId);
+    this._reorderPositions(playlistId);
   }
 
   removeTrackFromPlaylist(playlistId, trackId) {
     getDb().prepare('DELETE FROM playlist_tracks WHERE playlist_id = ? AND track_id = ?').run(playlistId, trackId);
     this._reorderPositions(playlistId);
+    return this.getPlaylist(playlistId);
+  }
+
+  clearPlaylist(playlistId) {
+    getDb().prepare('DELETE FROM playlist_tracks WHERE playlist_id = ?').run(playlistId);
     return this.getPlaylist(playlistId);
   }
 

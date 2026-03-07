@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const path = require('path');
 const config = require('./src/config');
 const { getDb } = require('./src/db');
-const { requireAuth } = require('./src/middleware/auth');
+const { requireAuth, requirePermission } = require('./src/middleware/auth');
 const playerService = require('./src/services/PlayerService');
 const schedulerService = require('./src/services/SchedulerService');
 
@@ -39,13 +39,16 @@ getDb();
 app.use(require('./src/routes/auth'));
 
 // Server restart endpoint (before api router)
-app.post('/api/server/restart', requireAuth, (req, res) => {
+app.post('/api/server/restart', requireAuth, requirePermission('server_restart'), (req, res) => {
   res.json({ success: true, message: 'Server restarting...' });
   setTimeout(() => {
     console.log('Restarting server...');
     process.exit(0); // systemd or pm2 will restart the process
   }, 500);
 });
+
+// Expose io for routes that need to emit events
+app.set('io', io);
 
 // Protect all other routes
 app.use('/api', requireAuth, require('./src/routes/api'));
@@ -60,7 +63,16 @@ app.use((req, res, next) => {
     return next();
   }
   return res.redirect('/login');
-}, express.static(path.join(__dirname, 'public')));
+}, express.static(path.join(__dirname, 'public'), {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    // JS/CSS: short cache, must revalidate (cache-busting via ?v= query)
+    if (filePath.match(/\.(js|css)$/)) {
+      res.setHeader('Cache-Control', 'public, max-age=60, must-revalidate');
+    }
+  },
+}));
 
 // SPA fallback — serve index.html for non-API routes
 app.get('*', (req, res) => {

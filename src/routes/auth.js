@@ -22,6 +22,9 @@ router.post('/api/auth/login', (req, res) => {
   if (!user || !bcrypt.compareSync(password, user.password)) {
     return res.status(401).json({ error: 'Nieprawidłowy login lub hasło' });
   }
+  if (user.is_active === 0) {
+    return res.status(403).json({ error: 'Konto jest nieaktywne' });
+  }
 
   req.session.userId = user.id;
   req.session.username = user.username;
@@ -58,12 +61,24 @@ router.post('/api/auth/change-password', (req, res) => {
   res.json({ success: true });
 });
 
-// Current user info
+// Current user info (with permissions)
 router.get('/api/auth/me', (req, res) => {
   if (!req.session || !req.session.userId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  res.json({ userId: req.session.userId, username: req.session.username });
+  const { getUserPermissions } = require('../middleware/auth');
+  const row = getDb().prepare(`
+    SELECT u.id, u.username, u.role_id, r.name as role_name
+    FROM users u LEFT JOIN roles r ON r.id = u.role_id
+    WHERE u.id = ?
+  `).get(req.session.userId);
+
+  res.json({
+    userId: row.id,
+    username: row.username,
+    role: row.role_name || 'brak',
+    permissions: getUserPermissions(req.session.userId),
+  });
 });
 
 function loginPage(error = '') {
@@ -77,17 +92,18 @@ function loginPage(error = '') {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f8fafc;
+      background: #1a1a2e;
       display: flex;
       align-items: center;
       justify-content: center;
       min-height: 100vh;
     }
     .login-card {
-      background: white;
+      background: #16213e;
+      border: 1px solid #2a2a4a;
       border-radius: 12px;
       padding: 40px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
       width: 100%;
       max-width: 380px;
     }
@@ -95,11 +111,11 @@ function loginPage(error = '') {
       text-align: center;
       font-size: 1.4rem;
       margin-bottom: 8px;
-      color: #1e293b;
+      color: #1db954;
     }
     .login-card p {
       text-align: center;
-      color: #64748b;
+      color: #8888aa;
       font-size: 0.9rem;
       margin-bottom: 24px;
     }
@@ -111,25 +127,27 @@ function loginPage(error = '') {
       font-size: 0.85rem;
       font-weight: 500;
       margin-bottom: 6px;
-      color: #374151;
+      color: #e8e8f0;
     }
     .form-group input {
       width: 100%;
       padding: 10px 14px;
-      border: 1px solid #e2e8f0;
+      border: 1px solid #2a2a4a;
       border-radius: 8px;
       font-size: 0.95rem;
       outline: none;
+      background: #1a1a2e;
+      color: #e8e8f0;
       transition: border-color 0.2s;
     }
     .form-group input:focus {
-      border-color: #2563eb;
-      box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+      border-color: #1db954;
+      box-shadow: 0 0 0 3px rgba(29,185,84,0.2);
     }
     .login-btn {
       width: 100%;
       padding: 12px;
-      background: #2563eb;
+      background: #1db954;
       color: white;
       border: none;
       border-radius: 8px;
@@ -138,11 +156,11 @@ function loginPage(error = '') {
       cursor: pointer;
       transition: background 0.2s;
     }
-    .login-btn:hover { background: #1d4ed8; }
+    .login-btn:hover { background: #1ed760; }
     .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
     .error {
-      background: #fef2f2;
-      color: #dc2626;
+      background: rgba(231,76,60,0.15);
+      color: #e74c3c;
       padding: 10px 14px;
       border-radius: 8px;
       font-size: 0.85rem;

@@ -20,38 +20,75 @@ function initPlayer(socket) {
   let currentDuration = 0;
   let isSeeking = false;
   let dragging = false;
+  let lastTrackId = null;
+  let _lastElapsedText = '';
+  let _lastDurationText = '';
+  let _lastVolume = -1;
 
-  function updateUI(state) {
-    els.status.textContent = state.status;
-    els.status.className = `sm-status sm-status--${state.status}`;
+  function setProgress(ratio) {
+    els.progress.style.transform = `scaleX(${ratio})`;
+  }
 
-    if (state.currentTrack) {
-      els.trackTitle.textContent = state.currentTrack.title || 'Unknown';
-      els.trackArtist.textContent = state.currentTrack.artist || '';
+  // Called from app.js RAF throttle — NOT directly from socket
+  window._updatePlayerUI = function(state) {
+    // Only update track info when track actually changes
+    const trackId = state.currentTrack ? state.currentTrack.id : null;
+    if (trackId !== lastTrackId) {
+      lastTrackId = trackId;
+      currentDuration = 0; // Reset so mpv can set the real value
+      els.status.textContent = state.status;
+      els.status.className = `sm-status sm-status--${state.status}`;
+
+      if (state.currentTrack) {
+        els.trackTitle.textContent = state.currentTrack.title || 'Unknown';
+        els.trackArtist.textContent = state.currentTrack.artist || '';
+      } else {
+        els.trackTitle.textContent = 'Brak utworu';
+        els.trackArtist.textContent = '';
+      }
+      els.playlistName.textContent = state.playlist ? state.playlist.name : '-';
     } else {
-      els.trackTitle.textContent = 'Brak utworu';
-      els.trackArtist.textContent = '';
+      // Status can change without track change (play/pause/stop)
+      const statusText = state.status;
+      if (els.status.textContent !== statusText) {
+        els.status.textContent = statusText;
+        els.status.className = `sm-status sm-status--${statusText}`;
+      }
     }
 
-    // Use mpv duration if available, fallback to track's DB duration
+    // Always prefer mpv's live duration over DB duration
     if (state.duration > 0) {
       currentDuration = state.duration;
-    } else if (state.currentTrack && state.currentTrack.duration > 0) {
+    } else if (state.currentTrack && state.currentTrack.duration > 0 && currentDuration <= 0) {
+      // Only use DB duration as initial fallback before mpv reports real duration
       currentDuration = state.currentTrack.duration;
     }
 
     if (!isSeeking) {
-      els.elapsed.textContent = formatTime(state.elapsed);
-      els.duration.textContent = formatTime(currentDuration);
-      els.progress.style.width = currentDuration > 0 ? `${(state.elapsed / currentDuration) * 100}%` : '0%';
+      // Only update text if it actually changed
+      const elapsedText = formatTime(state.elapsed);
+      const durationText = formatTime(currentDuration);
+      if (elapsedText !== _lastElapsedText) {
+        _lastElapsedText = elapsedText;
+        els.elapsed.textContent = elapsedText;
+      }
+      if (durationText !== _lastDurationText) {
+        _lastDurationText = durationText;
+        els.duration.textContent = durationText;
+      }
+      setProgress(currentDuration > 0 ? state.elapsed / currentDuration : 0);
     }
 
-    els.volume.value = state.volume;
-    els.volumeVal.textContent = state.volume;
-    els.playlistName.textContent = state.playlist ? state.playlist.name : '-';
-  }
-
-  socket.on('playerState', updateUI);
+    // Only update volume if value changed and slider isn't being dragged
+    const vol = state.volume;
+    if (vol !== _lastVolume) {
+      _lastVolume = vol;
+      if (document.activeElement !== els.volume) {
+        els.volume.value = vol;
+      }
+      els.volumeVal.textContent = vol;
+    }
+  };
 
   els.btnPlay.onclick = () => API.post('/player/play');
   els.btnPause.onclick = () => API.post('/player/pause');
@@ -72,13 +109,14 @@ function initPlayer(socket) {
   }
 
   function updateSeekPreview(ratio) {
-    els.progress.style.width = `${ratio * 100}%`;
+    setProgress(ratio);
     els.elapsed.textContent = formatTime(ratio * currentDuration);
   }
 
   function doSeek(ratio) {
-    const position = ratio * currentDuration;
-    API.post('/player/seek', { position }).then(() => { isSeeking = false; });
+    // Clamp to just before end to prevent skip
+    const position = Math.min(ratio * currentDuration, currentDuration - 0.5);
+    API.post('/player/seek', { position: Math.max(0, position) }).then(() => { isSeeking = false; });
   }
 
   // Mouse seek (drag or click)

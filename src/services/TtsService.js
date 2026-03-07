@@ -6,7 +6,7 @@ const config = require('../config');
 const playlistService = require('./PlaylistService');
 
 class TtsService {
-  async generate(text, engine, language) {
+  async generate(text, engine, language, voice) {
     const settings = playlistService.getSettings();
     engine = engine || settings.ttsEngine || 'google';
     language = language || settings.ttsLanguage || 'pl';
@@ -16,6 +16,8 @@ class TtsService {
 
     if (engine === 'piper') {
       await this._generatePiper(text, filepath, language);
+    } else if (engine === 'edge') {
+      await this._generateEdge(text, filepath, voice || 'pl-PL-ZofiaNeural');
     } else {
       await this._generateGoogle(text, filepath, language);
     }
@@ -55,6 +57,33 @@ class TtsService {
       exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
         if (err) reject(new Error(`Piper TTS failed: ${stderr || err.message}`));
         else resolve();
+      });
+    });
+  }
+
+  _generateEdge(text, outputPath, voice) {
+    return new Promise((resolve, reject) => {
+      const escapedText = text.replace(/"/g, '\\"');
+      const cmd = `edge-tts --voice "${voice}" --text "${escapedText}" --write-media "${outputPath}"`;
+      exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
+        if (err) reject(new Error(`Edge TTS failed: ${stderr || err.message}`));
+        else resolve();
+      });
+    });
+  }
+
+  getEdgeVoices() {
+    return new Promise((resolve) => {
+      exec('edge-tts --list-voices', { timeout: 10000 }, (err, stdout) => {
+        if (err || !stdout) { resolve([]); return; }
+        const voices = [];
+        for (const line of stdout.trim().split('\n')) {
+          const parts = line.split(/\s{2,}/);
+          if (parts.length >= 2 && parts[0].includes('-')) {
+            voices.push({ id: parts[0], gender: parts[1] || '', style: parts[2] || '' });
+          }
+        }
+        resolve(voices);
       });
     });
   }
